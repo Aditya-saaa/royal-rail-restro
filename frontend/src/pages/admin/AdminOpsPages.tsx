@@ -11,9 +11,16 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const t = localStorage.getItem('rrr_access_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
+
+  if (!t) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${t}`,
+  };
 }
 
 /* -------------------- Kitchen -------------------- */

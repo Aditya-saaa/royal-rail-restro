@@ -137,6 +137,7 @@ export interface Review {
   rating: number;
   title?: string | null;
   comment?: string | null;
+  admin_reply?: string | null;
   is_approved: boolean;
   is_featured: boolean;
   created_at?: string;
