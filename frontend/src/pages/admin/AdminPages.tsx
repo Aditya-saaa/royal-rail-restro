@@ -187,47 +187,26 @@ export function AdminReservations() {
   );
 }
 
+/** @deprecated Use AdminMenuManager from AdminCmsPages (routed at /admin/menu). */
 export function AdminMenu() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-menu'],
-    queryFn: () => menuApi.items({ page_size: 50, is_available: undefined }),
-  });
-  if (isLoading) return <PageLoader />;
   return (
     <>
       <Seo title="Menu Management" noindex />
-      <h1 className="mb-6 font-display text-2xl font-bold">Menu Items</h1>
-      <div className="overflow-x-auto rounded-2xl border bg-white dark:border-charcoal-700 dark:bg-charcoal-800">
-        <table className="min-w-full text-sm">
-          <thead className="bg-charcoal-50 text-xs uppercase dark:bg-charcoal-900">
-            <tr>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Price</th>
-              <th className="px-4 py-3 text-left">Veg</th>
-              <th className="px-4 py-3 text-left">Available</th>
-              <th className="px-4 py-3 text-left">Flags</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.items.map((i) => (
-              <tr key={i.id} className="border-t dark:border-charcoal-700">
-                <td className="px-4 py-3 font-medium">{i.name}</td>
-                <td className="px-4 py-3">{formatCurrency(i.price)}</td>
-                <td className="px-4 py-3">{i.is_veg ? 'Veg' : 'Non-veg'}</td>
-                <td className="px-4 py-3">{i.is_available ? 'Yes' : 'No'}</td>
-                <td className="px-4 py-3 text-xs">
-                  {[i.is_featured && 'Featured', i.is_chef_special && 'Chef', i.is_rail_special && 'Rail']
-                    .filter(Boolean)
-                    .join(', ') || '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card max-w-xl">
+        <h1 className="font-display text-2xl font-bold">Menu CMS moved</h1>
+        <p className="mt-2 text-sm text-charcoal-600 dark:text-charcoal-300">
+          Full create / edit / delete / bulk UI is at{' '}
+          <a className="font-semibold text-royal-700 underline" href="/admin/menu">
+            /admin/menu
+          </a>{' '}
+          (component: <code>AdminMenuManager</code> in <code>AdminCmsPages.tsx</code>).
+        </p>
+        <p className="mt-2 text-sm text-charcoal-500">
+          Media: <a className="underline" href="/admin/media">/admin/media</a> · Features:{' '}
+          <a className="underline" href="/admin/features">/admin/features</a> · Home builder:{' '}
+          <a className="underline" href="/admin/homepage">/admin/homepage</a>
+        </p>
       </div>
-      <p className="mt-3 text-xs text-charcoal-400">
-        Full create/edit forms available via API; use admin API or extend UI as needed. Seeded catalogue is live.
-      </p>
     </>
   );
 }

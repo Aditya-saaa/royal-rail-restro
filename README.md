@@ -83,6 +83,22 @@ royal-rail-restro/
 - **Secondary:** Cream, Warm Gray
 - **Identity:** Railway-inspired luxury, premium yet affordable family dining
 
+## v2.0 Admin CMS (owner, no code)
+
+After login as admin (`/admin`):
+
+| Module | Path | What you can do |
+|--------|------|-----------------|
+| Menu CMS | `/admin/menu` | Add/edit/delete/duplicate/archive dishes, bulk availability & price |
+| Media | `/admin/media` | Upload images (Cloudinary), copy URLs |
+| Features | `/admin/features` | Toggle ordering, reservations, homepage sections |
+| Restaurant CMS | `/admin/cms` | Logo, hero, contact, socials, theme colors |
+| Reviews | `/admin/reviews` | Approve, feature, reply, delete |
+| Blog / Offers / Events / Gallery | respective routes | Full create CMS |
+| Data & Seed | `/admin/seed` | Populate catalogue if empty |
+
+See `docs/V2_UPGRADE.md` and `docs/SEED_FIX.md`.
+
 ## License
 
 Proprietary — Royal Rail Restro, Gaya. All rights reserved.

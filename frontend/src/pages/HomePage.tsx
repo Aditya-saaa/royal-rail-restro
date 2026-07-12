@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { SkeletonCard, PageLoader } from '@/components/ui/Spinner';
 import { formatCurrency } from '@/lib/utils';
 import type { HomePayload } from '@/types';
+import { useFeatureStore } from '@/store/featureStore';
 
 /** Always renderable fallback so the homepage never stays blank. */
 const FALLBACK_HOME: HomePayload = {
@@ -36,6 +37,10 @@ const FALLBACK_HOME: HomePayload = {
 };
 
 export default function HomePage() {
+  const isVisible = useFeatureStore((s) => s.isVisible);
+  const orderingOn = useFeatureStore((s) => s.isEnabled('online_ordering'));
+  const reserveOn = useFeatureStore((s) => s.isEnabled('table_reservation'));
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['home'],
     queryFn: publicApi.home,
@@ -108,20 +113,30 @@ export default function HomePage() {
               Rail Special Thali — crafted for families who love premium yet affordable dining.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/menu">
-                <Button variant="gold" size="lg">
-                  Order Online <FiArrowRight />
-                </Button>
-              </Link>
-              <Link to="/reservation">
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="border-white text-white hover:bg-white hover:text-royal-700"
-                >
-                  <FiCalendar /> Reserve Table
-                </Button>
-              </Link>
+              {orderingOn ? (
+                <Link to="/menu">
+                  <Button variant="gold" size="lg">
+                    Order Online <FiArrowRight />
+                  </Button>
+                </Link>
+              ) : (
+                <Link to="/menu">
+                  <Button variant="gold" size="lg">
+                    View Menu <FiArrowRight />
+                  </Button>
+                </Link>
+              )}
+              {reserveOn && (
+                <Link to="/reservation">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="border-white text-white hover:bg-white hover:text-royal-700"
+                  >
+                    <FiCalendar /> Reserve Table
+                  </Button>
+                </Link>
+              )}
             </div>
             <p className="mt-6 text-sm text-cream-200/70">
               1st Floor, Dev Raj Tower, Gewalbigha, Gaya · Open 11 AM – 10:30 PM
@@ -171,6 +186,7 @@ export default function HomePage() {
       </section>
 
       {/* Categories */}
+      {isVisible('home_categories') && (
       <section className="container-rrr py-16">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
@@ -198,8 +214,10 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Signature / Featured */}
+      {isVisible('home_featured_dishes') && (
       <section className="bg-cream-100 py-16 dark:bg-charcoal-950">
         <div className="container-rrr">
           <h2 className="section-title">Signature Dishes</h2>
@@ -218,9 +236,30 @@ export default function HomePage() {
           )}
         </div>
       </section>
+      )}
+
+      {/* Why choose us / awards */}
+      {isVisible('home_awards') && (
+        <section className="container-rrr py-12">
+          <h2 className="section-title text-center">Why Choose Royal Rail</h2>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { t: 'Premium ingredients', d: 'Fresh, quality produce every day' },
+              { t: 'Family first', d: 'Warm hospitality for every guest' },
+              { t: 'Signature thali', d: 'Railway-inspired multi-course platters' },
+              { t: 'Affordable luxury', d: 'First-class taste without excess' },
+            ].map((x) => (
+              <div key={x.t} className="card text-center">
+                <p className="font-display text-lg font-semibold text-royal-700 dark:text-gold-400">{x.t}</p>
+                <p className="mt-2 text-sm text-charcoal-500">{x.d}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Offers */}
-      {(home.offers?.length ?? 0) > 0 && (
+      {isVisible('home_offers') && (home.offers?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">Today&apos;s Offers</h2>
           <p className="section-subtitle mb-8">Save more on your favourite meals</p>
@@ -249,7 +288,7 @@ export default function HomePage() {
       )}
 
       {/* Chef specials */}
-      {(home.chef_specials?.length ?? 0) > 0 && (
+      {isVisible('home_chef_specials') && (home.chef_specials?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <div className="mb-8 flex items-end justify-between">
             <div>
@@ -269,6 +308,7 @@ export default function HomePage() {
       )}
 
       {/* Rail specials CTA */}
+      {isVisible('home_rail_specials') && (
       <section className="bg-charcoal-900 py-16 text-white">
         <div className="container-rrr grid items-center gap-10 lg:grid-cols-2">
           <div>
@@ -302,9 +342,35 @@ export default function HomePage() {
           />
         </div>
       </section>
+      )}
+
+      {/* Story */}
+      {isVisible('home_story') && (
+        <section className="container-rrr py-16">
+          <div className="grid items-center gap-10 lg:grid-cols-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-gold-600">Our Story</p>
+              <h2 className="section-title mt-2">Inspired by the rails</h2>
+              <p className="mt-4 text-charcoal-600 dark:text-charcoal-300 leading-relaxed">
+                Royal Rail Restro brings the nostalgia of classic railway dining to Gewalbigha, Gaya —
+                steel thalis, warm hospitality, and modern family comfort under one roof.
+              </p>
+              <Link to="/our-story" className="mt-6 inline-block">
+                <Button variant="outline">Read our story</Button>
+              </Link>
+            </div>
+            <img
+              src="https://placehold.co/640x400/1a1a1a/D4AF37?text=Our+Story"
+              alt="Royal Rail Restro story"
+              className="rounded-3xl shadow-soft"
+              loading="lazy"
+            />
+          </div>
+        </section>
+      )}
 
       {/* Testimonials */}
-      {(home.testimonials?.length ?? 0) > 0 && (
+      {isVisible('home_testimonials') && (home.testimonials?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">What Guests Say</h2>
           <p className="section-subtitle mb-8">Real reviews from our dining family</p>
@@ -334,7 +400,7 @@ export default function HomePage() {
       )}
 
       {/* Gallery strip */}
-      {(home.gallery?.length ?? 0) > 0 && (
+      {isVisible('home_gallery') && (home.gallery?.length ?? 0) > 0 && (
         <section className="bg-cream-100 py-16 dark:bg-charcoal-950">
           <div className="container-rrr">
             <h2 className="section-title">Moments at Royal Rail</h2>
@@ -360,6 +426,7 @@ export default function HomePage() {
       )}
 
       {/* Reservation CTA */}
+      {isVisible('home_reservation_cta') && reserveOn && (
       <section className="container-rrr py-16">
         <div className="card overflow-hidden bg-royal-gradient p-8 text-white md:p-12">
           <div className="max-w-2xl">
@@ -376,6 +443,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Map */}
       <section className="border-t border-charcoal-100 bg-white py-12 dark:border-charcoal-700 dark:bg-charcoal-800">

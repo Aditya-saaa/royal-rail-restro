@@ -60,24 +60,55 @@ async def restaurant_info() -> dict[str, Any]:
 @router.get("/search")
 async def global_search(
     db: DbSession,
-    q: str = Query(..., min_length=2, max_length=100),
+    q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(10, ge=1, le=30),
+    is_veg: Optional[bool] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    suggest: bool = False,
 ):
-    term = f"%{q.strip()}%"
+    """Search with optional filters. suggest=true returns lightweight typeahead."""
+    raw = q.strip()
+    term = f"%{raw}%"
+    # Simple typo tolerance: also search without last char / middle space collapse
+    alt = f"%{raw[:-1]}%" if len(raw) > 3 else None
+
+    conds = [
+        MenuItem.is_available.is_(True),
+        or_(
+            MenuItem.name.ilike(term),
+            MenuItem.description.ilike(term),
+            MenuItem.tags.ilike(term),
+            MenuItem.short_description.ilike(term),
+            *( [MenuItem.name.ilike(alt)] if alt else [] ),
+        ),
+    ]
+    if is_veg is not None:
+        conds.append(MenuItem.is_veg.is_(is_veg))
+    if min_price is not None:
+        conds.append(MenuItem.price >= min_price)
+    if max_price is not None:
+        conds.append(MenuItem.price <= max_price)
+
     items = (
-        await db.execute(
-            select(MenuItem)
-            .where(
-                MenuItem.is_available.is_(True),
-                or_(
-                    MenuItem.name.ilike(term),
-                    MenuItem.description.ilike(term),
-                    MenuItem.tags.ilike(term),
-                ),
-            )
-            .limit(limit)
-        )
+        await db.execute(select(MenuItem).where(*conds).order_by(MenuItem.name).limit(limit))
     ).scalars().all()
+
+    if suggest:
+        return {
+            "query": q,
+            "suggestions": [
+                {
+                    "type": "menu",
+                    "id": i.id,
+                    "label": i.name,
+                    "slug": i.slug,
+                    "price": float(i.price),
+                    "is_veg": i.is_veg,
+                }
+                for i in items[:8]
+            ],
+        }
 
     categories = (
         await db.execute(
@@ -95,6 +126,14 @@ async def global_search(
         )
     ).scalars().all()
 
+    popular = (
+        await db.execute(
+            select(MenuItem)
+            .where(MenuItem.is_featured.is_(True), MenuItem.is_available.is_(True))
+            .limit(5)
+        )
+    ).scalars().all()
+
     return {
         "query": q,
         "menu_items": [
@@ -105,6 +144,7 @@ async def global_search(
                 "price": float(i.price),
                 "image_url": i.image_url,
                 "is_veg": i.is_veg,
+                "rating_avg": float(i.rating_avg or 0),
             }
             for i in items
         ],
@@ -112,6 +152,10 @@ async def global_search(
         "blog_posts": [
             {"id": p.id, "title": p.title, "slug": p.slug, "excerpt": p.excerpt}
             for p in posts
+        ],
+        "popular": [
+            {"id": i.id, "name": i.name, "slug": i.slug, "price": float(i.price)}
+            for i in popular
         ],
     }
 

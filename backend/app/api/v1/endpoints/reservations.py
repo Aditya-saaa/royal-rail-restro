@@ -32,6 +32,13 @@ async def time_slots(
 async def create_reservation(
     data: ReservationCreate, db: DbSession, user: OptionalUser
 ):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("table_reservation"):
+        raise HTTPException(
+            status_code=503,
+            detail="This service is temporarily unavailable.",
+        )
     service = ReservationService(db)
     try:
         return await service.create(data, user=user)

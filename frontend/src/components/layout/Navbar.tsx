@@ -4,17 +4,20 @@ import { FiMenu, FiX, FiShoppingBag, FiUser, FiMoon, FiSun, FiSearch } from 'rea
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useFeatureStore } from '@/store/featureStore';
 import { cn } from '@/lib/utils';
 
-const navLinks = [
-  { to: '/', label: 'Home' },
-  { to: '/menu', label: 'Menu' },
-  { to: '/rail-special-thali', label: 'Rail Thali' },
-  { to: '/reservation', label: 'Reserve' },
-  { to: '/offers', label: 'Offers' },
-  { to: '/gallery', label: 'Gallery' },
-  { to: '/about', label: 'About' },
-  { to: '/contact', label: 'Contact' },
+const allNavLinks = [
+  { to: '/', label: 'Home', feature: null },
+  { to: '/menu', label: 'Menu', feature: null },
+  { to: '/rail-special-thali', label: 'Rail Thali', feature: 'home_rail_specials' },
+  { to: '/reservation', label: 'Reserve', feature: 'table_reservation' },
+  { to: '/offers', label: 'Offers', feature: 'home_offers' },
+  { to: '/gallery', label: 'Gallery', feature: 'gallery' },
+  { to: '/blog', label: 'Blog', feature: 'blog' },
+  { to: '/events', label: 'Events', feature: 'events' },
+  { to: '/about', label: 'About', feature: null },
+  { to: '/contact', label: 'Contact', feature: 'contact_form' },
 ];
 
 export function Navbar() {
@@ -24,6 +27,12 @@ export function Navbar() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const itemCount = useCartStore((s) => s.itemCount());
   const { darkMode, toggleDarkMode } = useThemeStore();
+  const isVisible = useFeatureStore((s) => s.isVisible);
+  const orderingOn = useFeatureStore((s) => s.isEnabled('online_ordering'));
+  const darkModeOn = useFeatureStore((s) => s.isVisible('dark_mode'));
+  const searchOn = useFeatureStore((s) => s.isVisible('search'));
+
+  const navLinks = allNavLinks.filter((l) => !l.feature || isVisible(l.feature));
 
   return (
     <header className="sticky top-0 z-50 border-b border-charcoal-100/80 bg-white/85 backdrop-blur-xl dark:border-charcoal-700 dark:bg-charcoal-900/85">
@@ -62,30 +71,36 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            className="btn-ghost rounded-full p-2"
-            aria-label="Search"
-            onClick={() => navigate('/search')}
-          >
-            <FiSearch className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            className="btn-ghost rounded-full p-2"
-            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            onClick={toggleDarkMode}
-          >
-            {darkMode ? <FiSun className="h-5 w-5" /> : <FiMoon className="h-5 w-5" />}
-          </button>
-          <Link to="/cart" className="btn-ghost relative rounded-full p-2" aria-label={`Cart, ${itemCount} items`}>
-            <FiShoppingBag className="h-5 w-5" />
-            {itemCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-royal-700 px-1 text-[10px] font-bold text-white">
-                {itemCount}
-              </span>
-            )}
-          </Link>
+          {searchOn && (
+            <button
+              type="button"
+              className="btn-ghost rounded-full p-2"
+              aria-label="Search"
+              onClick={() => navigate('/search')}
+            >
+              <FiSearch className="h-5 w-5" />
+            </button>
+          )}
+          {darkModeOn && (
+            <button
+              type="button"
+              className="btn-ghost rounded-full p-2"
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              onClick={toggleDarkMode}
+            >
+              {darkMode ? <FiSun className="h-5 w-5" /> : <FiMoon className="h-5 w-5" />}
+            </button>
+          )}
+          {orderingOn && (
+            <Link to="/cart" className="btn-ghost relative rounded-full p-2" aria-label={`Cart, ${itemCount} items`}>
+              <FiShoppingBag className="h-5 w-5" />
+              {itemCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-royal-700 px-1 text-[10px] font-bold text-white">
+                  {itemCount}
+                </span>
+              )}
+            </Link>
+          )}
           {user ? (
             <Link
               to={isAdmin() ? '/admin' : '/account'}

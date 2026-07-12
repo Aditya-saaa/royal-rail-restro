@@ -55,17 +55,19 @@ export function Seo({
 
 export const restaurantJsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'Restaurant',
+  '@type': ['Restaurant', 'LocalBusiness', 'FoodEstablishment'],
   name: 'Royal Rail Restro',
   image: 'https://royalrailrestro.com/favicon.svg',
-  '@id': 'https://royalrailrestro.com',
+  '@id': 'https://royalrailrestro.com/#restaurant',
   url: 'https://royalrailrestro.com',
   telephone: '+91-XXXXXXXXXX',
+  email: 'info@royalrailrestro.com',
   address: {
     '@type': 'PostalAddress',
     streetAddress: '1st Floor, Dev Raj Tower, Gewalbigha',
     addressLocality: 'Gaya',
     addressRegion: 'Bihar',
+    postalCode: '823001',
     addressCountry: 'IN',
   },
   geo: {
@@ -82,4 +84,49 @@ export const restaurantJsonLd = {
   ],
   priceRange: '₹₹',
   acceptsReservations: true,
+  openingHoursSpecification: [
+    {
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Sunday'],
+      opens: '11:00',
+      closes: '22:30',
+    },
+    {
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Friday', 'Saturday'],
+      opens: '11:00',
+      closes: '23:00',
+    },
+  ],
+  sameAs: [],
 };
+
+export function breadcrumbJsonLd(items: { name: string; path: string }[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((it, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: it.name,
+      item: `${BASE}${it.path}`,
+    })),
+  };
+}
+
+export function organizationJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Royal Rail Restro',
+    url: BASE,
+    logo: `${BASE}/favicon.svg`,
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'customer service',
+      telephone: '+91-XXXXXXXXXX',
+      areaServed: 'IN',
+      availableLanguage: ['en', 'hi'],
+    },
+  };
+}

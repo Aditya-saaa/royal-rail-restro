@@ -36,6 +36,21 @@ async def preview_checkout(data: OrderCreate, db: DbSession):
 
 @router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 async def create_order(data: OrderCreate, db: DbSession, user: OptionalUser):
+    from app.services.feature_service import FeatureService
+
+    features = FeatureService(db)
+    if not await features.is_enabled("online_ordering"):
+        raise HTTPException(
+            status_code=503,
+            detail="This service is temporarily unavailable.",
+        )
+    if data.order_type == "delivery" and not await features.is_enabled("delivery"):
+        raise HTTPException(status_code=503, detail="Delivery is temporarily unavailable.")
+    if data.order_type == "pickup" and not await features.is_enabled("pickup"):
+        raise HTTPException(status_code=503, detail="Pickup is temporarily unavailable.")
+    if data.order_type == "dine_in" and not await features.is_enabled("dine_in_ordering"):
+        raise HTTPException(status_code=503, detail="Dine-in ordering is temporarily unavailable.")
+
     service = OrderService(db)
     try:
         order = await service.create_order(data, user=user)

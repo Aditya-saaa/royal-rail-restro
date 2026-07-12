@@ -12,21 +12,39 @@ import {
   FiSettings,
   FiLogOut,
   FiArrowLeft,
+  FiToggleLeft,
+  FiCamera,
+  FiFlag,
+  FiEdit3,
+  FiDatabase,
+  FiGift,
+  FiCoffee,
+  FiBarChart2,
+  FiLayout,
 } from 'react-icons/fi';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 
 const links = [
   { to: '/admin', label: 'Dashboard', icon: FiHome, end: true },
+  { to: '/admin/kitchen', label: 'Kitchen', icon: FiCoffee },
   { to: '/admin/orders', label: 'Orders', icon: FiShoppingBag },
+  { to: '/admin/calendar', label: 'Res. Calendar', icon: FiCalendar },
   { to: '/admin/reservations', label: 'Reservations', icon: FiCalendar },
-  { to: '/admin/menu', label: 'Menu', icon: FiGrid },
-  { to: '/admin/users', label: 'Users', icon: FiUsers },
+  { to: '/admin/menu', label: 'Menu CMS', icon: FiGrid },
+  { to: '/admin/media', label: 'Media', icon: FiCamera },
   { to: '/admin/gallery', label: 'Gallery', icon: FiImage },
   { to: '/admin/reviews', label: 'Reviews', icon: FiStar },
-  { to: '/admin/blogs', label: 'Blogs', icon: FiFileText },
+  { to: '/admin/blogs', label: 'Blog CMS', icon: FiFileText },
   { to: '/admin/offers', label: 'Offers', icon: FiTag },
+  { to: '/admin/events', label: 'Events', icon: FiGift },
+  { to: '/admin/users', label: 'Users', icon: FiUsers },
+  { to: '/admin/features', label: 'Features', icon: FiToggleLeft },
+  { to: '/admin/cms', label: 'Restaurant CMS', icon: FiEdit3 },
+  { to: '/admin/homepage', label: 'Home Builder', icon: FiLayout },
+  { to: '/admin/analytics', label: 'Analytics', icon: FiBarChart2 },
   { to: '/admin/settings', label: 'Settings', icon: FiSettings },
+  { to: '/admin/seed', label: 'Data & Seed', icon: FiDatabase },
 ];
 
 export function AdminLayout() {
@@ -63,11 +81,17 @@ export function AdminLayout() {
           ))}
         </nav>
         <div className="space-y-1 border-t border-charcoal-100 p-3 dark:border-charcoal-700">
-          <Link to="/" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-charcoal-600 hover:bg-charcoal-50 dark:text-charcoal-200">
+          <Link
+            to="/"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-charcoal-600 hover:bg-charcoal-50 dark:text-charcoal-200"
+          >
             <FiArrowLeft /> Website
           </Link>
-          <Link to="/developer" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-charcoal-600 hover:bg-charcoal-50 dark:text-charcoal-200">
-            <FiSettings /> Developer
+          <Link
+            to="/developer"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-charcoal-600 hover:bg-charcoal-50 dark:text-charcoal-200"
+          >
+            <FiFlag /> Developer
           </Link>
           <button
             type="button"
@@ -83,9 +107,14 @@ export function AdminLayout() {
           <h1 className="font-display text-lg font-semibold text-charcoal-900 dark:text-cream-50">
             Royal Rail Restro
           </h1>
-          <div className="flex gap-2 overflow-x-auto lg:hidden">
-            {links.slice(0, 5).map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className="rounded-lg bg-charcoal-100 px-3 py-1.5 text-xs font-medium dark:bg-charcoal-700">
+          <div className="flex max-w-[60vw] gap-2 overflow-x-auto lg:hidden">
+            {links.slice(0, 8).map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.end}
+                className="whitespace-nowrap rounded-lg bg-charcoal-100 px-3 py-1.5 text-xs font-medium dark:bg-charcoal-700"
+              >
                 {l.label}
               </NavLink>
             ))}

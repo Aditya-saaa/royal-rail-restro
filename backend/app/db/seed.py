@@ -132,6 +132,13 @@ async def seed_all(db: AsyncSession, *, do_commit: bool = True) -> dict:
         stats["categories"], stats["menu_items"] = await _seed_categories_menu(db)
         stats["content"] = await _seed_content(db)
         stats["settings"] = await _seed_settings(db)
+        # Expand feature catalog (owner toggles) without breaking old flags
+        try:
+            from app.services.feature_service import FeatureService
+
+            stats["features"] = await FeatureService(db).ensure_catalog()
+        except Exception:
+            stats["features"] = 0
         if do_commit:
             await db.commit()
         else:

@@ -72,6 +72,62 @@ async def approve_review(
     return await service.approve_review(review, featured=featured)
 
 
+@router.patch("/reviews/{review_id}/reject", response_model=ReviewOut)
+async def reject_review(review_id: str, db: DbSession, _: AdminUser):
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.is_approved = False
+    review.is_featured = False
+    await db.flush()
+    await db.refresh(review)
+    return review
+
+
+@router.patch("/reviews/{review_id}/reply", response_model=ReviewOut)
+async def reply_review(review_id: str, db: DbSession, _: AdminUser, reply: str = ""):
+    from datetime import datetime, timezone
+
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.admin_reply = reply
+    review.replied_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(review)
+    return review
+
+
+@router.delete("/reviews/{review_id}", response_model=MessageResponse)
+async def delete_review(review_id: str, db: DbSession, _: AdminUser):
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    await db.delete(review)
+    await db.flush()
+    return MessageResponse(message="Review deleted")
+
+
+@router.get("/reviews/admin", response_model=PaginatedResponse[ReviewOut])
+async def list_reviews_admin(
+    db: DbSession,
+    _: AdminUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    approved_only: bool = False,
+):
+    service = ContentService(db)
+    items, total = await service.list_reviews(
+        approved_only=approved_only,
+        page=page,
+        page_size=page_size,
+    )
+    return paginate(items, total, page, page_size)
+
+
 # ---- Gallery ----
 @router.get("/gallery", response_model=List[GalleryImageOut])
 async def list_gallery(

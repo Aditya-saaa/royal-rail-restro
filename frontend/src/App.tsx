@@ -9,6 +9,7 @@ import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { PageLoader } from '@/components/ui/Spinner';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useFeatureStore } from '@/store/featureStore';
 
 const HomePage = lazy(() => import('@/pages/HomePage'));
 const MenuPage = lazy(() => import('@/pages/MenuPage'));
@@ -34,13 +35,39 @@ function Bootstrap() {
   const fetchMe = useAuthStore((s) => s.fetchMe);
   const darkMode = useThemeStore((s) => s.darkMode);
   const setDarkMode = useThemeStore((s) => s.setDarkMode);
+  const loadFeatures = useFeatureStore((s) => s.load);
 
   useEffect(() => {
     setDarkMode(darkMode);
     fetchMe();
-  }, [fetchMe, darkMode, setDarkMode]);
+    loadFeatures();
+  }, [fetchMe, darkMode, setDarkMode, loadFeatures]);
 
   return null;
+}
+
+function LazyAdminCms({ name }: { name: keyof typeof import('@/pages/admin/AdminCmsPages') }) {
+  const Comp = lazy(async () => {
+    const mod = await import('@/pages/admin/AdminCmsPages');
+    return { default: mod[name] as React.ComponentType };
+  });
+  return (
+    <S>
+      <Comp />
+    </S>
+  );
+}
+
+function LazyAdminOps({ name }: { name: keyof typeof import('@/pages/admin/AdminOpsPages') }) {
+  const Comp = lazy(async () => {
+    const mod = await import('@/pages/admin/AdminOpsPages');
+    return { default: mod[name] as React.ComponentType };
+  });
+  return (
+    <S>
+      <Comp />
+    </S>
+  );
 }
 
 function S({ children }: { children: React.ReactNode }) {
@@ -132,14 +159,23 @@ export default function App() {
               }
             >
               <Route index element={<LazyAdmin name="AdminDashboard" />} />
-              <Route path="orders" element={<LazyAdmin name="AdminOrders" />} />
+              <Route path="orders" element={<LazyAdminOps name="AdminOrdersPro" />} />
+              <Route path="kitchen" element={<LazyAdminOps name="AdminKitchen" />} />
               <Route path="reservations" element={<LazyAdmin name="AdminReservations" />} />
-              <Route path="menu" element={<LazyAdmin name="AdminMenu" />} />
+              <Route path="calendar" element={<LazyAdminOps name="AdminReservationCalendar" />} />
+              <Route path="menu" element={<LazyAdminCms name="AdminMenuManager" />} />
+              <Route path="media" element={<LazyAdminCms name="AdminMediaLibrary" />} />
               <Route path="users" element={<LazyAdmin name="AdminUsers" />} />
-              <Route path="gallery" element={<LazyAdmin name="AdminGallery" />} />
-              <Route path="reviews" element={<LazyAdmin name="AdminReviews" />} />
-              <Route path="blogs" element={<LazyAdmin name="AdminBlogs" />} />
-              <Route path="offers" element={<LazyAdmin name="AdminOffers" />} />
+              <Route path="gallery" element={<LazyAdminCms name="AdminGalleryManager" />} />
+              <Route path="reviews" element={<LazyAdminCms name="AdminReviewsManager" />} />
+              <Route path="blogs" element={<LazyAdminCms name="AdminBlogManager" />} />
+              <Route path="offers" element={<LazyAdminCms name="AdminOffersManager" />} />
+              <Route path="events" element={<LazyAdminCms name="AdminEventsManager" />} />
+              <Route path="features" element={<LazyAdminCms name="AdminFeatureManager" />} />
+              <Route path="cms" element={<LazyAdminCms name="AdminRestaurantCms" />} />
+              <Route path="homepage" element={<LazyAdminOps name="AdminHomepageBuilder" />} />
+              <Route path="analytics" element={<LazyAdminOps name="AdminAnalyticsPro" />} />
+              <Route path="seed" element={<LazyAdminCms name="AdminSeedTools" />} />
               <Route path="settings" element={<LazyAdmin name="AdminSettings" />} />
             </Route>
 

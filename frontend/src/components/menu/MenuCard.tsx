@@ -4,6 +4,7 @@ import { FiPlus, FiStar } from 'react-icons/fi';
 import type { MenuItem } from '@/types';
 import { formatCurrency, spiceLabel } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
+import { useFeatureStore } from '@/store/featureStore';
 import { Button } from '@/components/ui/Button';
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 
 export const MenuCard = memo(function MenuCard({ item }: Props) {
   const addItem = useCartStore((s) => s.addItem);
+  const orderingOn = useFeatureStore((s) => s.isEnabled('online_ordering'));
 
   return (
     <article className="card group flex flex-col overflow-hidden p-0 transition hover:-translate-y-1 hover:shadow-royal">
@@ -68,14 +70,20 @@ export const MenuCard = memo(function MenuCard({ item }: Props) {
               </span>
             )}
           </div>
-          <Button
-            size="sm"
-            onClick={() => addItem(item)}
-            aria-label={`Add ${item.name} to cart`}
-            disabled={!item.is_available}
-          >
-            <FiPlus aria-hidden /> Add
-          </Button>
+          {orderingOn ? (
+            <Button
+              size="sm"
+              onClick={() => addItem(item)}
+              aria-label={`Add ${item.name} to cart`}
+              disabled={!item.is_available}
+            >
+              <FiPlus aria-hidden /> Add
+            </Button>
+          ) : (
+            <Link to={`/menu/${item.slug}`} className="text-sm font-semibold text-royal-700">
+              View
+            </Link>
+          )}
         </div>
       </div>
     </article>

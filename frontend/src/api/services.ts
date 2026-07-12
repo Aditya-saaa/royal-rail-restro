@@ -43,14 +43,31 @@ export const menuApi = {
   featured: () => api.get<MenuItem[]>('/menu/items/featured').then((r) => r.data),
   chefSpecials: () => api.get<MenuItem[]>('/menu/items/chef-specials').then((r) => r.data),
   railSpecials: () => api.get<MenuItem[]>('/menu/items/rail-specials').then((r) => r.data),
-  createItem: (data: Partial<MenuItem>) => api.post<MenuItem>('/menu/items', data).then((r) => r.data),
-  updateItem: (id: string, data: Partial<MenuItem>) =>
+  createItem: (data: Partial<MenuItem> & Record<string, unknown>) =>
+    api.post<MenuItem>('/menu/items', data).then((r) => r.data),
+  updateItem: (id: string, data: Partial<MenuItem> & Record<string, unknown>) =>
     api.patch<MenuItem>(`/menu/items/${id}`, data).then((r) => r.data),
   deleteItem: (id: string) => api.delete(`/menu/items/${id}`),
   createCategory: (data: Partial<Category>) =>
     api.post<Category>('/menu/categories', data).then((r) => r.data),
   updateCategory: (id: string, data: Partial<Category>) =>
     api.patch<Category>(`/menu/categories/${id}`, data).then((r) => r.data),
+  deleteCategory: (id: string) => api.delete(`/menu/categories/${id}`),
+  // Admin bulk
+  bulkDelete: (ids: string[]) => api.post('/menu/admin/bulk/delete', { ids }),
+  bulkAvailability: (ids: string[], is_available: boolean) =>
+    api.post('/menu/admin/bulk/availability', { ids, is_available }),
+  bulkCategory: (ids: string[], category_id: string) =>
+    api.post('/menu/admin/bulk/category', { ids, category_id }),
+  bulkPrice: (ids: string[], mode: string, value: number) =>
+    api.post('/menu/admin/bulk/price', { ids, mode, value }),
+  bulkFlags: (ids: string[], flags: Record<string, boolean>) =>
+    api.post('/menu/admin/bulk/flags', { ids, ...flags }),
+  sortItems: (items: { id: string; sort_order: number }[]) =>
+    api.post('/menu/admin/sort', { items }),
+  duplicateItem: (id: string) => api.post<MenuItem>(`/menu/admin/items/${id}/duplicate`, {}),
+  archiveItem: (id: string) => api.post<MenuItem>(`/menu/admin/items/${id}/archive`),
+  restoreItem: (id: string) => api.post<MenuItem>(`/menu/admin/items/${id}/restore`),
 };
 
 export const orderApi = {
@@ -86,14 +103,27 @@ export const reservationApi = {
 export const contentApi = {
   reviews: (params?: { featured_only?: boolean; page?: number }) =>
     api.get<Paginated<Review>>('/reviews', { params }).then((r) => r.data),
+  reviewsAdmin: (params?: { page?: number; approved_only?: boolean }) =>
+    api.get<Paginated<Review>>('/reviews/admin', { params }).then((r) => r.data),
   createReview: (data: unknown) => api.post<Review>('/reviews', data).then((r) => r.data),
+  approveReview: (id: string, featured = false) =>
+    api.patch(`/reviews/${id}/approve`, null, { params: { featured } }).then((r) => r.data),
+  rejectReview: (id: string) => api.patch(`/reviews/${id}/reject`).then((r) => r.data),
+  replyReview: (id: string, reply: string) =>
+    api.patch(`/reviews/${id}/reply`, null, { params: { reply } }).then((r) => r.data),
+  deleteReview: (id: string) => api.delete(`/reviews/${id}`),
   gallery: (params?: { category?: string; featured_only?: boolean }) =>
     api.get<GalleryImage[]>('/gallery', { params }).then((r) => r.data),
+  createGallery: (data: Partial<GalleryImage>) =>
+    api.post<GalleryImage>('/gallery', data).then((r) => r.data),
   blog: (page = 1) =>
     api.get<Paginated<BlogPost>>('/blog', { params: { page } }).then((r) => r.data),
   blogPost: (slug: string) => api.get<BlogPost>(`/blog/${slug}`).then((r) => r.data),
+  createBlog: (data: Partial<BlogPost>) => api.post<BlogPost>('/blog', data).then((r) => r.data),
   events: () => api.get<EventItem[]>('/events').then((r) => r.data),
+  createEvent: (data: Partial<EventItem>) => api.post<EventItem>('/events', data).then((r) => r.data),
   offers: () => api.get<Offer[]>('/offers').then((r) => r.data),
+  createOffer: (data: Partial<Offer>) => api.post<Offer>('/offers', data).then((r) => r.data),
   contact: (data: unknown) => api.post('/contact', data).then((r) => r.data),
   faqs: (category?: string) =>
     api.get<FAQ[]>('/faqs', { params: { category } }).then((r) => r.data),
@@ -103,12 +133,58 @@ export const publicApi = {
   restaurant: () => api.get<RestaurantInfo>('/restaurant').then((r) => r.data),
   home: () => api.get<HomePayload>('/home').then((r) => r.data),
   search: (q: string) => api.get('/search', { params: { q } }).then((r) => r.data),
+  features: () => api.get('/features/public').then((r) => r.data),
+  cms: () => api.get('/cms/public').then((r) => r.data),
+};
+
+export const mediaApi = {
+  list: (params?: { folder?: string; search?: string; page?: number }) =>
+    api.get('/media', { params }).then((r) => r.data),
+  upload: async (file: File, folder = 'royal-rail-restro', alt_text = '') => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('folder', folder);
+    form.append('alt_text', alt_text);
+    const { data } = await api.post('/media/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+  remove: (id: string) => api.delete(`/media/${id}`),
+  update: (id: string, params: { alt_text?: string; folder?: string }) =>
+    api.patch(`/media/${id}`, null, { params }).then((r) => r.data),
+};
+
+export const featureApi = {
+  list: () => api.get('/features').then((r) => r.data),
+  update: (
+    key: string,
+    data: {
+      enabled?: boolean;
+      visible?: boolean;
+      maintenance_message?: string | null;
+    }
+  ) => api.patch(`/features/${key}`, data).then((r) => r.data),
+  bulk: (updates: unknown[]) => api.post('/features/bulk', { updates }).then((r) => r.data),
+  ensure: () => api.post('/features/ensure-catalog').then((r) => r.data),
+};
+
+export const cmsApi = {
+  public: () => api.get('/cms/public').then((r) => r.data),
+  profile: () => api.get('/cms/profile').then((r) => r.data),
+  updateProfile: (data: Record<string, unknown>) =>
+    api.put('/cms/profile', data).then((r) => r.data),
+  theme: () => api.get('/cms/theme').then((r) => r.data),
+  updateTheme: (values: Record<string, string>) =>
+    api.put('/cms/theme', { values }).then((r) => r.data),
 };
 
 export const adminApi = {
   dashboard: () => api.get<DashboardStats>('/admin/dashboard').then((r) => r.data),
   users: (page = 1, search?: string) =>
     api.get<Paginated<User>>('/admin/users', { params: { page, search } }).then((r) => r.data),
+  toggleUser: (id: string) =>
+    api.patch(`/admin/users/${id}/toggle-active`).then((r) => r.data),
   theme: () => api.get<Record<string, string>>('/admin/settings/theme').then((r) => r.data),
   updateTheme: (key: string, value: string) =>
     api.put(`/admin/settings/theme/${key}`, null, { params: { value } }).then((r) => r.data),
@@ -119,4 +195,13 @@ export const adminApi = {
   activityLogs: (page = 1) =>
     api.get('/admin/activity-logs', { params: { page } }).then((r) => r.data),
   siteSettings: () => api.get('/admin/settings/site').then((r) => r.data),
+  seed: (secret?: string) =>
+    api
+      .post(
+        '/admin/seed',
+        {},
+        secret ? { headers: { 'X-Seed-Secret': secret } } : undefined
+      )
+      .then((r) => r.data),
+  dbStats: () => api.get('/admin/db-stats').then((r) => r.data),
 };
