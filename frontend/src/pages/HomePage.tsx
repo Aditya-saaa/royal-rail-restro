@@ -3,19 +3,48 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight, FiCalendar, FiStar, FiUsers, FiAward } from 'react-icons/fi';
 import { publicApi } from '@/api/services';
+import { getErrorMessage, API_BASE } from '@/api/client';
 import { Seo, restaurantJsonLd } from '@/seo/Seo';
 import { MenuCard } from '@/components/menu/MenuCard';
 import { Button } from '@/components/ui/Button';
 import { SkeletonCard, PageLoader } from '@/components/ui/Spinner';
 import { formatCurrency } from '@/lib/utils';
+import type { HomePayload } from '@/types';
+
+/** Always renderable fallback so the homepage never stays blank. */
+const FALLBACK_HOME: HomePayload = {
+  featured_dishes: [],
+  chef_specials: [],
+  rail_specials: [],
+  categories: [
+    { id: '1', name: 'North Indian', slug: 'north-indian', icon: '🍛', sort_order: 1, is_active: true, is_featured: true },
+    { id: '2', name: 'Chinese', slug: 'chinese', icon: '🥡', sort_order: 2, is_active: true, is_featured: true },
+    { id: '3', name: 'Tandoor', slug: 'tandoor', icon: '🔥', sort_order: 3, is_active: true, is_featured: true },
+    { id: '4', name: 'Pizza', slug: 'pizza', icon: '🍕', sort_order: 4, is_active: true, is_featured: true },
+    { id: '5', name: 'Burgers', slug: 'burgers', icon: '🍔', sort_order: 5, is_active: true, is_featured: true },
+    { id: '6', name: 'Rail Special Thali', slug: 'rail-special-thali', icon: '🚂', sort_order: 0, is_active: true, is_featured: true },
+  ],
+  offers: [],
+  testimonials: [],
+  gallery: [],
+  stats: {
+    happy_customers: '10,000+',
+    dishes: '150+',
+    years: '5+',
+    rating: '4.8',
+  },
+};
 
 export default function HomePage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['home'],
     queryFn: publicApi.home,
+    retry: 2,
+    staleTime: 60_000,
   });
 
-  if (isLoading || !data) {
+  // First load only — show spinner briefly
+  if (isLoading && !data) {
     return (
       <>
         <Seo />
@@ -24,9 +53,39 @@ export default function HomePage() {
     );
   }
 
+  // Never block the whole page on API failure or empty payload
+  const home = data ?? FALLBACK_HOME;
+  const apiEmpty =
+    data &&
+    !data.featured_dishes?.length &&
+    !data.categories?.length &&
+    !data.chef_specials?.length;
+
   return (
     <>
       <Seo jsonLd={restaurantJsonLd} path="/" />
+
+      {(isError || apiEmpty) && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          {isError ? (
+            <>
+              Could not load live menu data ({getErrorMessage(error)}). Showing brand homepage.
+              API: <code className="text-xs">{API_BASE}</code>.{' '}
+              <button type="button" className="underline font-semibold" onClick={() => refetch()}>
+                Retry
+              </button>
+            </>
+          ) : (
+            <>
+              Live catalogue is empty on the server. Seed the database (POST /api/v1/admin/seed) or
+              redeploy backend after the seed fix.{' '}
+              <button type="button" className="underline font-semibold" onClick={() => refetch()} disabled={isFetching}>
+                Refresh
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-royal-gradient text-white">
@@ -85,7 +144,7 @@ export default function HomePage() {
             </div>
             <div className="absolute -bottom-4 -left-4 rounded-2xl bg-gold-400 px-4 py-3 text-charcoal-900 shadow-gold">
               <p className="text-xs font-semibold uppercase tracking-wide">Guest Rating</p>
-              <p className="font-display text-2xl font-bold">★ {data.stats.rating}</p>
+              <p className="font-display text-2xl font-bold">★ {home.stats.rating}</p>
             </div>
           </motion.div>
         </div>
@@ -95,10 +154,10 @@ export default function HomePage() {
       <section className="border-b border-charcoal-100 bg-white dark:border-charcoal-700 dark:bg-charcoal-800">
         <div className="container-rrr grid grid-cols-2 gap-6 py-10 md:grid-cols-4">
           {[
-            { icon: FiUsers, label: 'Happy Guests', value: data.stats.happy_customers },
-            { icon: FiAward, label: 'Signature Dishes', value: data.stats.dishes },
-            { icon: FiStar, label: 'Average Rating', value: data.stats.rating },
-            { icon: FiCalendar, label: 'Years of Taste', value: data.stats.years },
+            { icon: FiUsers, label: 'Happy Guests', value: home.stats.happy_customers },
+            { icon: FiAward, label: 'Signature Dishes', value: home.stats.dishes },
+            { icon: FiStar, label: 'Average Rating', value: home.stats.rating },
+            { icon: FiCalendar, label: 'Years of Taste', value: home.stats.years },
           ].map((s) => (
             <div key={s.label} className="text-center">
               <s.icon className="mx-auto mb-2 h-6 w-6 text-royal-700 dark:text-gold-400" aria-hidden />
@@ -123,7 +182,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {data.categories.slice(0, 12).map((c) => (
+          {(home.categories?.length ? home.categories : FALLBACK_HOME.categories).slice(0, 12).map((c) => (
             <Link
               key={c.id}
               to={`/menu?category=${c.slug}`}
@@ -146,24 +205,28 @@ export default function HomePage() {
           <h2 className="section-title">Signature Dishes</h2>
           <p className="section-subtitle mb-8">Guest favourites prepared fresh every day</p>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {data.featured_dishes.length
-              ? data.featured_dishes.map((item) => <MenuCard key={item.id} item={item} />)
+            {home.featured_dishes?.length
+              ? home.featured_dishes.map((item) => <MenuCard key={item.id} item={item} />)
               : Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
+          {!home.featured_dishes?.length && (
+            <div className="mt-6 text-center">
+              <Link to="/menu">
+                <Button variant="outline">Browse full menu</Button>
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
       {/* Offers */}
-      {data.offers.length > 0 && (
+      {(home.offers?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">Today&apos;s Offers</h2>
           <p className="section-subtitle mb-8">Save more on your favourite meals</p>
           <div className="grid gap-6 md:grid-cols-3">
-            {data.offers.map((o) => (
-              <article
-                key={o.id}
-                className="card overflow-hidden bg-royal-gradient p-0 text-white"
-              >
+            {home.offers.map((o) => (
+              <article key={o.id} className="card overflow-hidden bg-royal-gradient p-0 text-white">
                 <div className="p-6">
                   <span className="badge bg-gold-400 text-charcoal-900">
                     {o.discount_label || 'Offer'}
@@ -186,75 +249,73 @@ export default function HomePage() {
       )}
 
       {/* Chef specials */}
-      <section className="container-rrr py-16">
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <h2 className="section-title">Chef Recommendations</h2>
-            <p className="section-subtitle">Handpicked by our kitchen</p>
+      {(home.chef_specials?.length ?? 0) > 0 && (
+        <section className="container-rrr py-16">
+          <div className="mb-8 flex items-end justify-between">
+            <div>
+              <h2 className="section-title">Chef Recommendations</h2>
+              <p className="section-subtitle">Handpicked by our kitchen</p>
+            </div>
+            <Link to="/chef-specials" className="text-sm font-semibold text-royal-700">
+              See all →
+            </Link>
           </div>
-          <Link to="/chef-specials" className="text-sm font-semibold text-royal-700">
-            See all →
-          </Link>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {data.chef_specials.map((item) => (
-            <MenuCard key={item.id} item={item} />
-          ))}
-        </div>
-      </section>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {home.chef_specials.map((item) => (
+              <MenuCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Rail specials CTA */}
-      {data.rail_specials.length > 0 && (
-        <section className="bg-charcoal-900 py-16 text-white">
-          <div className="container-rrr grid items-center gap-10 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-gold-400">
-                Signature Experience
-              </p>
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
-                Rail Special Thali
-              </h2>
-              <p className="mt-4 text-charcoal-300">
-                A multi-course journey inspired by classic railway dining — dal, sabzi, roti, rice,
-                raita and dessert, plated with royal flair.
-              </p>
+      <section className="bg-charcoal-900 py-16 text-white">
+        <div className="container-rrr grid items-center gap-10 lg:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-gold-400">
+              Signature Experience
+            </p>
+            <h2 className="font-display text-3xl font-bold sm:text-4xl">Rail Special Thali</h2>
+            <p className="mt-4 text-charcoal-300">
+              A multi-course journey inspired by classic railway dining — dal, sabzi, roti, rice,
+              raita and dessert, plated with royal flair.
+            </p>
+            {(home.rail_specials?.length ?? 0) > 0 && (
               <ul className="mt-6 space-y-2 text-sm text-cream-200">
-                {data.rail_specials.map((t) => (
+                {home.rail_specials.map((t) => (
                   <li key={t.id} className="flex justify-between border-b border-white/10 py-2">
                     <span>{t.name}</span>
                     <span className="font-semibold text-gold-400">{formatCurrency(t.price)}</span>
                   </li>
                 ))}
               </ul>
-              <Link to="/rail-special-thali" className="mt-8 inline-block">
-                <Button variant="gold">Explore Thali Menu</Button>
-              </Link>
-            </div>
-            <img
-              src="https://placehold.co/640x480/8B0000/D4AF37?text=Rail+Special+Thali"
-              alt="Rail Special Thali platter"
-              className="rounded-3xl shadow-royal"
-              loading="lazy"
-            />
+            )}
+            <Link to="/rail-special-thali" className="mt-8 inline-block">
+              <Button variant="gold">Explore Thali Menu</Button>
+            </Link>
           </div>
-        </section>
-      )}
+          <img
+            src="https://placehold.co/640x480/8B0000/D4AF37?text=Rail+Special+Thali"
+            alt="Rail Special Thali platter"
+            className="rounded-3xl shadow-royal"
+            loading="lazy"
+          />
+        </div>
+      </section>
 
       {/* Testimonials */}
-      {data.testimonials.length > 0 && (
+      {(home.testimonials?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">What Guests Say</h2>
           <p className="section-subtitle mb-8">Real reviews from our dining family</p>
           <div className="grid gap-6 md:grid-cols-3">
-            {data.testimonials.map((t) => (
+            {home.testimonials.map((t) => (
               <blockquote key={t.id} className="card">
                 <div className="mb-3 text-gold-400" aria-label={`${t.rating} out of 5 stars`}>
                   {'★'.repeat(t.rating)}
                   {'☆'.repeat(5 - t.rating)}
                 </div>
-                {t.title && (
-                  <p className="mb-2 font-display text-lg font-semibold">{t.title}</p>
-                )}
+                {t.title && <p className="mb-2 font-display text-lg font-semibold">{t.title}</p>}
                 <p className="text-sm leading-relaxed text-charcoal-600 dark:text-charcoal-300">
                   “{t.comment}”
                 </p>
@@ -273,13 +334,13 @@ export default function HomePage() {
       )}
 
       {/* Gallery strip */}
-      {data.gallery.length > 0 && (
+      {(home.gallery?.length ?? 0) > 0 && (
         <section className="bg-cream-100 py-16 dark:bg-charcoal-950">
           <div className="container-rrr">
             <h2 className="section-title">Moments at Royal Rail</h2>
             <p className="section-subtitle mb-8">A glimpse of our kitchen & dining hall</p>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-              {data.gallery.slice(0, 6).map((g) => (
+              {home.gallery.slice(0, 6).map((g) => (
                 <img
                   key={g.id}
                   src={g.image_url}
@@ -302,9 +363,7 @@ export default function HomePage() {
       <section className="container-rrr py-16">
         <div className="card overflow-hidden bg-royal-gradient p-8 text-white md:p-12">
           <div className="max-w-2xl">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
-              Reserve Your Table
-            </h2>
+            <h2 className="font-display text-3xl font-bold sm:text-4xl">Reserve Your Table</h2>
             <p className="mt-3 text-cream-200/90">
               Perfect for family dinners, celebrations, and weekend outings. Instant online
               booking with confirmation.

@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,21 +26,30 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_lim
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables & seed
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    async with AsyncSessionLocal() as session:
-        try:
+    # Startup: create tables & seed catalogue
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("[startup] tables ready")
+    except Exception as exc:
+        print(f"[startup] create_all failed: {exc}")
+        traceback.print_exc()
+
+    try:
+        async with AsyncSessionLocal() as session:
             await seed_all(session)
-        except Exception as exc:
-            await session.rollback()
-            print(f"[seed] Warning: {exc}")
-    # Warm redis
+            print("[seed] completed successfully")
+    except Exception as exc:
+        print(f"[seed] Warning: {exc}")
+        traceback.print_exc()
+
     try:
         r = await get_redis()
         await r.ping()
+        print("[redis] connected")
     except Exception as exc:
         print(f"[redis] Warning: {exc}")
+
     yield
     await close_redis()
     await engine.dispose()
@@ -63,14 +73,24 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
-)
+
+# CORS — allow configured origins + Vercel previews when cors_allow_all
+# Note: do not combine allow_origins=["*"] with allow_credentials=True
+_cors_kwargs: dict = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": ["X-Request-ID"],
+}
+if settings.cors_allow_all:
+    # Reflect any browser Origin (Vercel production + preview deployments)
+    _cors_kwargs["allow_origin_regex"] = r"https?://.*"
+    # Explicit list still helps non-browser clients / tools
+    _cors_kwargs["allow_origins"] = settings.cors_origins_list
+else:
+    _cors_kwargs["allow_origins"] = settings.cors_origins_list
+
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 @app.exception_handler(Exception)
@@ -121,11 +141,11 @@ async def root():
         "version": __version__,
         "docs": "/docs",
         "health": "/health",
+        "api": settings.api_v1_prefix,
     }
 
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
-
 
 # Import models so metadata is complete
 from app import models as _models  # noqa: E402, F401

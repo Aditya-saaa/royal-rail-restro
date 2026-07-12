@@ -2,11 +2,14 @@
 
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Header, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, DbSession, DeveloperUser
+from app.core.config import settings
+from app.db.seed import seed_all
+from app.models.menu import Category, MenuItem
 from app.models.settings import (
     ActivityLog,
     DeveloperSetting,
@@ -217,7 +220,6 @@ async def developer_settings(db: DbSession, _: DeveloperUser):
 async def detailed_health(db: DbSession, _: DeveloperUser):
     from datetime import datetime, timezone
 
-    from app.core.config import settings
     from app.core.redis_client import get_redis
 
     db_status = "ok"
@@ -237,6 +239,9 @@ async def detailed_health(db: DbSession, _: DeveloperUser):
         "configured" if settings.cloudinary_cloud_name else "not_configured"
     )
 
+    cats = (await db.execute(select(func.count()).select_from(Category))).scalar() or 0
+    items = (await db.execute(select(func.count()).select_from(MenuItem))).scalar() or 0
+
     return {
         "status": "healthy" if db_status == "ok" else "degraded",
         "app": settings.app_name,
@@ -246,4 +251,75 @@ async def detailed_health(db: DbSession, _: DeveloperUser):
         "cloudinary": cloudinary_status,
         "timestamp": datetime.now(timezone.utc),
         "env": settings.app_env,
+        "categories": cats,
+        "menu_items": items,
+    }
+
+
+@router.post("/seed")
+async def run_seed(
+    db: DbSession,
+    x_seed_secret: Optional[str] = Header(default=None, alias="X-Seed-Secret"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Seed / re-seed catalogue, roles, admin, content.
+
+    Auth options:
+    1. Header X-Seed-Secret matching SEED_SECRET env (for first deploy)
+    2. Bearer token of an admin/superuser
+    """
+    allowed = False
+    if settings.seed_secret and x_seed_secret and x_seed_secret == settings.seed_secret:
+        allowed = True
+    elif authorization and authorization.lower().startswith("bearer "):
+        from jose import JWTError
+        from app.core.security import decode_token
+        from app.services.auth_service import AuthService
+
+        token = authorization.split(" ", 1)[1]
+        try:
+            payload = decode_token(token)
+            user = await AuthService(db).get_user_by_id(payload.get("sub", ""))
+            if user and (user.is_superuser or user.has_role("admin")):
+                allowed = True
+        except JWTError:
+            allowed = False
+
+    # Dev convenience when seed_secret unset and debug on
+    if not allowed and settings.app_debug and not settings.is_production:
+        allowed = True
+
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="Provide X-Seed-Secret header or admin Bearer token",
+        )
+
+    try:
+        await seed_all(db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Seed failed: {exc}") from exc
+
+    cats = (await db.execute(select(func.count()).select_from(Category))).scalar() or 0
+    items = (await db.execute(select(func.count()).select_from(MenuItem))).scalar() or 0
+    return {
+        "message": "Seed completed",
+        "success": True,
+        "categories": cats,
+        "menu_items": items,
+    }
+
+
+@router.get("/db-stats")
+async def db_stats(db: DbSession):
+    """Public lightweight stats to diagnose empty catalogue (no secrets)."""
+    cats = (await db.execute(select(func.count()).select_from(Category))).scalar() or 0
+    items = (await db.execute(select(func.count()).select_from(MenuItem))).scalar() or 0
+    users = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
+    return {
+        "categories": cats,
+        "menu_items": items,
+        "users": users,
+        "seeded": cats > 0 and items > 0,
     }

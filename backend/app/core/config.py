@@ -2,9 +2,35 @@
 
 from functools import lru_cache
 from typing import List
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_database_url(url: str) -> str:
+    """Ensure async SQLAlchemy URL works with Neon / Render Postgres."""
+    if not url:
+        return url
+    # Force async driver
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    # asyncpg uses ssl=require, not sslmode=require
+    if "sslmode" in query:
+        mode = query.pop("sslmode")
+        if mode and mode != "disable" and "ssl" not in query:
+            query["ssl"] = "require" if mode in ("require", "verify-ca", "verify-full") else mode
+    # Neon / Render typically need SSL
+    host = (parsed.hostname or "").lower()
+    if any(h in host for h in ("neon.tech", "render.com", "amazonaws.com")) and "ssl" not in query:
+        query["ssl"] = "require"
+    new_query = urlencode(query)
+    return urlunparse(parsed._replace(query=new_query))
 
 
 class Settings(BaseSettings):
@@ -42,6 +68,8 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
     )
+    # When true, reflect request Origin (safe for multi-preview Vercel deploys)
+    cors_allow_all: bool = True
 
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
@@ -70,16 +98,26 @@ class Settings(BaseSettings):
     admin_password: str = "Admin@RRR2026!"
     admin_name: str = "Platform Admin"
 
+    # Optional shared secret to reseed without admin login (set on Render)
+    seed_secret: str = ""
+
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
     cookie_domain: str | None = None
 
-    @field_validator("app_debug", mode="before")
+    @field_validator("app_debug", "cors_allow_all", mode="before")
     @classmethod
-    def parse_debug(cls, v: object) -> bool:
+    def parse_bool(cls, v: object) -> bool:
         if isinstance(v, str):
             return v.lower() in ("1", "true", "yes", "on")
         return bool(v)
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def fix_database_url(cls, v: object) -> object:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return v
 
     @property
     def cors_origins_list(self) -> List[str]:

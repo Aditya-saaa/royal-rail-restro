@@ -1,13 +1,47 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+/**
+ * Normalize API base URL for local + production.
+ * Accepts:
+ *  - https://host.onrender.com
+ *  - https://host.onrender.com/
+ *  - https://host.onrender.com/api/v1
+ *  - /api/v1
+ */
+function resolveApiBase(): string {
+  const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (!raw) return '/api/v1';
+
+  // Relative path
+  if (raw.startsWith('/')) {
+    return raw.replace(/\/+$/, '') || '/api/v1';
+  }
+
+  try {
+    const url = new URL(raw);
+    let path = url.pathname.replace(/\/+$/, '');
+    if (!path || path === '/') {
+      path = '/api/v1';
+    } else if (!path.endsWith('/api/v1') && !path.includes('/api/v1')) {
+      path = `${path}/api/v1`.replace(/\/{2,}/g, '/');
+    }
+    return `${url.origin}${path}`;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
+export const API_BASE = resolveApiBase();
 
 export const api = axios.create({
   baseURL: API_BASE,
-  withCredentials: true,
+  // Cross-origin Vercel → Render: cookies need explicit CORS origin allowlist.
+  // Bearer tokens are in localStorage, so credentials are not required for API calls.
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000,
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -61,6 +95,9 @@ export function getErrorMessage(err: unknown): string {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail)) {
       return detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ');
+    }
+    if (err.code === 'ERR_NETWORK') {
+      return 'Cannot reach API. Check VITE_API_URL and CORS settings.';
     }
     return err.message;
   }

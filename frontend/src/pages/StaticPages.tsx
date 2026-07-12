@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { contentApi, menuApi, publicApi } from '@/api/services';
