@@ -1,10 +1,17 @@
-"""Database seed: roles, admin, categories, menu, content."""
+"""Database seed: roles, admin, categories, menu, content.
 
+Async-safe: never touches lazy relationship collections.
+Uses explicit association-table inserts only.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.security import hash_password
@@ -12,7 +19,7 @@ from app.models.content import FAQ, BlogPost, Event, GalleryImage, Offer, Review
 from app.models.menu import Category, MenuItem
 from app.models.order import Coupon
 from app.models.settings import FeatureFlag, SiteSetting, ThemeSetting
-from app.models.user import Permission, Role, User
+from app.models.user import Permission, Role, RolePermission, User, UserRole
 from app.utils.helpers import slugify
 
 
@@ -31,7 +38,7 @@ PERMISSIONS = [
 ]
 
 ROLES = {
-    "admin": list(p[0] for p in PERMISSIONS),
+    "admin": [p[0] for p in PERMISSIONS],
     "manager": [
         "menu.read",
         "menu.write",
@@ -42,7 +49,13 @@ ROLES = {
         "content.write",
         "users.read",
     ],
-    "staff": ["orders.read", "orders.write", "reservations.read", "reservations.write", "menu.read"],
+    "staff": [
+        "orders.read",
+        "orders.write",
+        "reservations.read",
+        "reservations.write",
+        "menu.read",
+    ],
     "developer": ["developer.access", "settings.write", "menu.read"],
     "customer": [],
 }
@@ -91,36 +104,73 @@ MENU_ITEMS = [
     ("Cold Coffee", "beverages", 110, True, 0, False, False, False, "Chilled coffee with ice cream"),
     ("Gulab Jamun", "desserts", 80, True, 0, True, False, False, "2 pcs soft gulab jamun"),
     ("Brownie with Ice Cream", "desserts", 150, True, 0, True, True, False, "Warm brownie & vanilla scoop"),
-    ("Rasmalai", "desserts", 100, True, 0, False, False, False, "2 pcs soft rasmalai"),
+    ("Rasmalai", "desserts", 100, True, 0, True, False, False, "2 pcs soft rasmalai"),
 ]
 
 
-async def seed_all(db: AsyncSession) -> None:
-    await _seed_permissions_roles(db)
-    await _seed_admin(db)
-    await _seed_categories_menu(db)
-    await _seed_content(db)
-    await _seed_settings(db)
-    await db.commit()
+async def seed_all(db: AsyncSession, *, do_commit: bool = True) -> dict:
+    """
+    Idempotent seed. Safe for async SQLAlchemy / Neon.
 
-
-async def _seed_permissions_roles(db: AsyncSession) -> None:
-    perm_map: dict[str, Permission] = {}
-    for code, name, module in PERMISSIONS:
-        result = await db.execute(select(Permission).where(Permission.code == code))
-        perm = result.scalar_one_or_none()
-        if not perm:
-            perm = Permission(code=code, name=name, module=module)
-            db.add(perm)
+    do_commit=True: commit at end (startup + dedicated seed session).
+    do_commit=False: only flush (caller owns the transaction).
+    """
+    stats = {
+        "permissions": 0,
+        "roles": 0,
+        "role_permissions": 0,
+        "admin_created": False,
+        "categories": 0,
+        "menu_items": 0,
+        "content": 0,
+        "settings": 0,
+    }
+    try:
+        stats["permissions"] = await _seed_permissions(db)
+        stats["roles"], stats["role_permissions"] = await _seed_roles(db)
+        stats["admin_created"] = await _seed_admin(db)
+        stats["categories"], stats["menu_items"] = await _seed_categories_menu(db)
+        stats["content"] = await _seed_content(db)
+        stats["settings"] = await _seed_settings(db)
+        if do_commit:
+            await db.commit()
+        else:
             await db.flush()
-        perm_map[code] = perm
+        return stats
+    except Exception:
+        if do_commit:
+            await db.rollback()
+        raise
+
+
+async def _seed_permissions(db: AsyncSession) -> int:
+    created = 0
+    for code, name, module in PERMISSIONS:
+        exists = (
+            await db.execute(select(Permission.id).where(Permission.code == code))
+        ).scalar_one_or_none()
+        if exists:
+            continue
+        db.add(Permission(code=code, name=name, module=module))
+        created += 1
+    await db.flush()
+    return created
+
+
+async def _seed_roles(db: AsyncSession) -> tuple[int, int]:
+    """Create roles + role_permissions via association rows only."""
+    # Load permission ids by code
+    perm_rows = (await db.execute(select(Permission.id, Permission.code))).all()
+    perm_by_code = {code: pid for pid, code in perm_rows}
+
+    roles_created = 0
+    links_created = 0
 
     for role_name, codes in ROLES.items():
-        result = await db.execute(
-            select(Role).options(selectinload(Role.permissions)).where(Role.name == role_name)
-        )
-        role = result.scalar_one_or_none()
-        if not role:
+        role_id = (
+            await db.execute(select(Role.id).where(Role.name == role_name))
+        ).scalar_one_or_none()
+        if not role_id:
             role = Role(
                 name=role_name,
                 description=f"{role_name.title()} role",
@@ -128,25 +178,58 @@ async def _seed_permissions_roles(db: AsyncSession) -> None:
             )
             db.add(role)
             await db.flush()
-            await db.refresh(role, attribute_names=["permissions"])
-        existing = {p.code for p in role.permissions}
+            role_id = role.id
+            roles_created += 1
+
+        # Existing permission links for this role (column query only)
+        existing = set(
+            (
+                await db.execute(
+                    select(RolePermission.permission_id).where(
+                        RolePermission.role_id == role_id
+                    )
+                )
+            ).scalars().all()
+        )
+
         for code in codes:
-            if code not in existing and code in perm_map:
-                role.permissions.append(perm_map[code])
-        await db.flush()
+            pid = perm_by_code.get(code)
+            if not pid or pid in existing:
+                continue
+            db.add(RolePermission(role_id=role_id, permission_id=pid))
+            links_created += 1
+            existing.add(pid)
+
+    await db.flush()
+    return roles_created, links_created
 
 
-async def _seed_admin(db: AsyncSession) -> None:
-    result = await db.execute(select(User).where(User.email == settings.admin_email.lower()))
-    user = result.scalar_one_or_none()
-    if user:
-        return
-    role_result = await db.execute(
-        select(Role).options(selectinload(Role.permissions)).where(Role.name == "admin")
-    )
-    admin_role = role_result.scalar_one_or_none()
+async def _seed_admin(db: AsyncSession) -> bool:
+    email = settings.admin_email.lower()
+    user_id = (
+        await db.execute(select(User.id).where(User.email == email))
+    ).scalar_one_or_none()
+    if user_id:
+        # Ensure admin role link exists even if user was created earlier
+        admin_role_id = (
+            await db.execute(select(Role.id).where(Role.name == "admin"))
+        ).scalar_one_or_none()
+        if admin_role_id:
+            link = (
+                await db.execute(
+                    select(UserRole.user_id).where(
+                        UserRole.user_id == user_id,
+                        UserRole.role_id == admin_role_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if not link:
+                db.add(UserRole(user_id=user_id, role_id=admin_role_id))
+                await db.flush()
+        return False
+
     user = User(
-        email=settings.admin_email.lower(),
+        email=email,
         password_hash=hash_password(settings.admin_password),
         full_name=settings.admin_name,
         is_active=True,
@@ -155,42 +238,61 @@ async def _seed_admin(db: AsyncSession) -> None:
     )
     db.add(user)
     await db.flush()
-    if admin_role:
-        user.roles.append(admin_role)
-    await db.flush()
+
+    admin_role_id = (
+        await db.execute(select(Role.id).where(Role.name == "admin"))
+    ).scalar_one_or_none()
+    if admin_role_id:
+        db.add(UserRole(user_id=user.id, role_id=admin_role_id))
+        await db.flush()
+    return True
 
 
-async def _seed_categories_menu(db: AsyncSession) -> None:
-    cat_map: dict[str, Category] = {}
+async def _seed_categories_menu(db: AsyncSession) -> tuple[int, int]:
+    cat_ids: dict[str, str] = {}
+    cats_created = 0
+    items_created = 0
+
     for name, slug, desc, icon, order in CATEGORIES:
-        result = await db.execute(select(Category).where(Category.slug == slug))
-        cat = result.scalar_one_or_none()
-        if not cat:
-            cat = Category(
-                name=name,
-                slug=slug,
-                description=desc,
-                icon=icon,
-                sort_order=order,
-                is_active=True,
-                is_featured=order <= 6,
-            )
-            db.add(cat)
-            await db.flush()
-        cat_map[slug] = cat
-
-    for name, cat_slug, price, is_veg, spice, featured, chef, rail, short in MENU_ITEMS:
-        slug = slugify(name)
-        result = await db.execute(select(MenuItem).where(MenuItem.slug == slug))
-        if result.scalar_one_or_none():
+        row = (
+            await db.execute(select(Category.id).where(Category.slug == slug))
+        ).scalar_one_or_none()
+        if row:
+            cat_ids[slug] = row
             continue
-        cat = cat_map.get(cat_slug)
-        if not cat:
-            continue
-        item = MenuItem(
-            category_id=cat.id,
+        cat = Category(
             name=name,
             slug=slug,
+            description=desc,
+            icon=icon,
+            sort_order=order,
+            is_active=True,
+            is_featured=order <= 6,
+        )
+        db.add(cat)
+        await db.flush()
+        cat_ids[slug] = cat.id
+        cats_created += 1
+
+    for name, cat_slug, price, is_veg, spice, featured, chef, rail, short in MENU_ITEMS:
+        item_slug = slugify(name)
+        exists = (
+            await db.execute(select(MenuItem.id).where(MenuItem.slug == item_slug))
+        ).scalar_one_or_none()
+        if exists:
+            continue
+        cat_id = cat_ids.get(cat_slug)
+        if not cat_id:
+            # load if missing from map
+            cat_id = (
+                await db.execute(select(Category.id).where(Category.slug == cat_slug))
+            ).scalar_one_or_none()
+        if not cat_id:
+            continue
+        item = MenuItem(
+            category_id=cat_id,
+            name=name,
+            slug=item_slug,
             short_description=short,
             description=short,
             price=Decimal(str(price)),
@@ -200,58 +302,68 @@ async def _seed_categories_menu(db: AsyncSession) -> None:
             is_chef_special=chef,
             is_rail_special=rail,
             is_available=True,
-            preparation_time_mins=25 if "Biryani" in name or "Thali" in name else 15,
-            image_url=f"https://placehold.co/600x400/8B0000/D4AF37?text={slugify(name)[:20]}",
+            preparation_time_mins=25 if ("Biryani" in name or "Thali" in name) else 15,
+            image_url=(
+                f"https://placehold.co/600x400/8B0000/D4AF37?text={item_slug[:20]}"
+            ),
             tags="signature" if featured else None,
         )
         db.add(item)
+        items_created += 1
+
     await db.flush()
+    return cats_created, items_created
 
 
-async def _seed_content(db: AsyncSession) -> None:
-    # Coupons
+async def _seed_content(db: AsyncSession) -> int:
+    created = 0
+
     for code, desc, dtype, dval, min_amt in [
         ("WELCOME50", "₹50 off on first order", "fixed", 50, 199),
         ("RAIL10", "10% off on all orders", "percent", 10, 299),
         ("THALI20", "20% off on Rail Thali", "percent", 20, 250),
     ]:
-        result = await db.execute(select(Coupon).where(Coupon.code == code))
-        if not result.scalar_one_or_none():
-            db.add(
-                Coupon(
-                    code=code,
-                    description=desc,
-                    discount_type=dtype,
-                    discount_value=Decimal(str(dval)),
-                    min_order_amount=Decimal(str(min_amt)),
-                    max_discount=Decimal("100") if dtype == "percent" else None,
-                    is_active=True,
-                )
+        if (
+            await db.execute(select(Coupon.id).where(Coupon.code == code))
+        ).scalar_one_or_none():
+            continue
+        db.add(
+            Coupon(
+                code=code,
+                description=desc,
+                discount_type=dtype,
+                discount_value=Decimal(str(dval)),
+                min_order_amount=Decimal(str(min_amt)),
+                max_discount=Decimal("100") if dtype == "percent" else None,
+                is_active=True,
             )
+        )
+        created += 1
 
-    # Offers
     for title, label, code in [
         ("Welcome Aboard Offer", "₹50 OFF", "WELCOME50"),
         ("Rail Special Weekend", "20% OFF Thali", "THALI20"),
         ("Family Feast Deal", "10% OFF", "RAIL10"),
     ]:
-        slug = slugify(title)
-        result = await db.execute(select(Offer).where(Offer.slug == slug))
-        if not result.scalar_one_or_none():
-            db.add(
-                Offer(
-                    title=title,
-                    slug=slug,
-                    description=f"Exclusive offer at Royal Rail Restro — {label}",
-                    discount_label=label,
-                    coupon_code=code,
-                    is_active=True,
-                    is_featured=True,
-                    image_url=f"https://placehold.co/800x400/8B0000/D4AF37?text={slug[:15]}",
-                )
+        s = slugify(title)
+        if (
+            await db.execute(select(Offer.id).where(Offer.slug == s))
+        ).scalar_one_or_none():
+            continue
+        db.add(
+            Offer(
+                title=title,
+                slug=s,
+                description=f"Exclusive offer at Royal Rail Restro — {label}",
+                discount_label=label,
+                coupon_code=code,
+                is_active=True,
+                is_featured=True,
+                image_url=f"https://placehold.co/800x400/8B0000/D4AF37?text={s[:15]}",
             )
+        )
+        created += 1
 
-    # FAQs
     faqs = [
         ("What are your opening hours?", "We are open daily from 11:00 AM to 10:30 PM (Friday–Saturday until 11:00 PM).", "general"),
         ("Do you offer home delivery?", "Yes, we deliver across major areas of Gaya. Delivery fee applies based on distance.", "ordering"),
@@ -263,11 +375,13 @@ async def _seed_content(db: AsyncSession) -> None:
         ("Do you host events?", "Yes, we host birthday parties, family gatherings, and small corporate events. Contact us for packages.", "events"),
     ]
     for q, a, cat in faqs:
-        result = await db.execute(select(FAQ).where(FAQ.question == q))
-        if not result.scalar_one_or_none():
-            db.add(FAQ(question=q, answer=a, category=cat, is_active=True))
+        if (
+            await db.execute(select(FAQ.id).where(FAQ.question == q))
+        ).scalar_one_or_none():
+            continue
+        db.add(FAQ(question=q, answer=a, category=cat, is_active=True))
+        created += 1
 
-    # Reviews
     reviews = [
         ("Amit Kumar", 5, "Best thali in Gaya!", "The Royal Rail Thali was outstanding. Portions are generous and taste is authentic."),
         ("Priya Singh", 5, "Family favourite", "We visit every weekend. Great ambience and polite staff."),
@@ -276,20 +390,22 @@ async def _seed_content(db: AsyncSession) -> None:
         ("Vikash Yadav", 4, "Good Chinese", "Chilli chicken and hakka noodles hit the spot. Fast delivery too."),
     ]
     for name, rating, title, comment in reviews:
-        result = await db.execute(select(Review).where(Review.title == title))
-        if not result.scalar_one_or_none():
-            db.add(
-                Review(
-                    guest_name=name,
-                    rating=rating,
-                    title=title,
-                    comment=comment,
-                    is_approved=True,
-                    is_featured=True,
-                )
+        if (
+            await db.execute(select(Review.id).where(Review.title == title))
+        ).scalar_one_or_none():
+            continue
+        db.add(
+            Review(
+                guest_name=name,
+                rating=rating,
+                title=title,
+                comment=comment,
+                is_approved=True,
+                is_featured=True,
             )
+        )
+        created += 1
 
-    # Gallery
     for i, title in enumerate(
         [
             "Dining Hall",
@@ -300,31 +416,32 @@ async def _seed_content(db: AsyncSession) -> None:
             "Chef Special",
         ]
     ):
-        result = await db.execute(select(GalleryImage).where(GalleryImage.title == title))
-        if not result.scalar_one_or_none():
-            db.add(
-                GalleryImage(
-                    title=title,
-                    image_url=f"https://placehold.co/800x600/1a1a1a/D4AF37?text={slugify(title)}",
-                    category="interior" if i < 2 else "food",
-                    alt_text=f"{title} at Royal Rail Restro Gaya",
-                    sort_order=i,
-                    is_featured=True,
-                    is_active=True,
-                )
+        if (
+            await db.execute(select(GalleryImage.id).where(GalleryImage.title == title))
+        ).scalar_one_or_none():
+            continue
+        db.add(
+            GalleryImage(
+                title=title,
+                image_url=f"https://placehold.co/800x600/1a1a1a/D4AF37?text={slugify(title)}",
+                category="interior" if i < 2 else "food",
+                alt_text=f"{title} at Royal Rail Restro Gaya",
+                sort_order=i,
+                is_featured=True,
+                is_active=True,
             )
+        )
+        created += 1
 
-    # Blog
     blog_title = "The Story Behind Royal Rail Restro"
-    slug = slugify(blog_title)
-    result = await db.execute(select(BlogPost).where(BlogPost.slug == slug))
-    if not result.scalar_one_or_none():
-        from datetime import datetime, timezone
-
+    blog_slug = slugify(blog_title)
+    if not (
+        await db.execute(select(BlogPost.id).where(BlogPost.slug == blog_slug))
+    ).scalar_one_or_none():
         db.add(
             BlogPost(
                 title=blog_title,
-                slug=slug,
+                slug=blog_slug,
                 excerpt="How a love for classic railway dining inspired Gaya's premium family restaurant.",
                 content=(
                     "## A Journey of Flavour\n\n"
@@ -344,18 +461,17 @@ async def _seed_content(db: AsyncSession) -> None:
                 cover_image="https://placehold.co/1200x630/8B0000/D4AF37?text=Our+Story",
             )
         )
-
-    # Event
-    from datetime import date, timedelta
+        created += 1
 
     event_title = "Weekend Live Music Dinner"
-    eslug = slugify(event_title)
-    result = await db.execute(select(Event).where(Event.slug == eslug))
-    if not result.scalar_one_or_none():
+    event_slug = slugify(event_title)
+    if not (
+        await db.execute(select(Event.id).where(Event.slug == event_slug))
+    ).scalar_one_or_none():
         db.add(
             Event(
                 title=event_title,
-                slug=eslug,
+                slug=event_slug,
                 description="Enjoy live acoustic music with our special dinner menu every Saturday evening.",
                 event_date=date.today() + timedelta(days=14),
                 start_time="19:00",
@@ -363,11 +479,14 @@ async def _seed_content(db: AsyncSession) -> None:
                 is_active=True,
             )
         )
+        created += 1
 
     await db.flush()
+    return created
 
 
-async def _seed_settings(db: AsyncSession) -> None:
+async def _seed_settings(db: AsyncSession) -> int:
+    created = 0
     site_defaults = [
         ("restaurant_tagline", "Premium Family Dining Inspired by the Rails", "general"),
         ("hero_title", "Welcome to Royal Rail Restro", "home"),
@@ -380,13 +499,20 @@ async def _seed_settings(db: AsyncSession) -> None:
         ),
     ]
     for key, value, group in site_defaults:
-        result = await db.execute(select(SiteSetting).where(SiteSetting.key == key))
-        if not result.scalar_one_or_none():
-            db.add(
-                SiteSetting(
-                    key=key, value=value, group=group, is_public=True, label=key.replace("_", " ").title()
-                )
+        if (
+            await db.execute(select(SiteSetting.id).where(SiteSetting.key == key))
+        ).scalar_one_or_none():
+            continue
+        db.add(
+            SiteSetting(
+                key=key,
+                value=value,
+                group=group,
+                is_public=True,
+                label=key.replace("_", " ").title(),
             )
+        )
+        created += 1
 
     theme_defaults = {
         "primary": "#8B0000",
@@ -398,12 +524,15 @@ async def _seed_settings(db: AsyncSession) -> None:
         "border_radius": "12px",
     }
     for key, value in theme_defaults.items():
-        result = await db.execute(select(ThemeSetting).where(ThemeSetting.key == key))
-        if not result.scalar_one_or_none():
-            category = "colors" if key in ("primary", "gold", "charcoal", "cream") else "typography"
-            if key == "border_radius":
-                category = "layout"
-            db.add(ThemeSetting(key=key, value=value, category=category))
+        if (
+            await db.execute(select(ThemeSetting.id).where(ThemeSetting.key == key))
+        ).scalar_one_or_none():
+            continue
+        category = "colors" if key in ("primary", "gold", "charcoal", "cream") else "typography"
+        if key == "border_radius":
+            category = "layout"
+        db.add(ThemeSetting(key=key, value=value, category=category))
+        created += 1
 
     flags = [
         ("online_ordering", True, "Enable online ordering"),
@@ -414,8 +543,12 @@ async def _seed_settings(db: AsyncSession) -> None:
         ("live_chat", False, "Enable live chat widget"),
     ]
     for key, enabled, desc in flags:
-        result = await db.execute(select(FeatureFlag).where(FeatureFlag.key == key))
-        if not result.scalar_one_or_none():
-            db.add(FeatureFlag(key=key, enabled=enabled, description=desc))
+        if (
+            await db.execute(select(FeatureFlag.id).where(FeatureFlag.key == key))
+        ).scalar_one_or_none():
+            continue
+        db.add(FeatureFlag(key=key, enabled=enabled, description=desc))
+        created += 1
 
     await db.flush()
+    return created

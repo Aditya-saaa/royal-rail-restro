@@ -37,8 +37,8 @@ async def lifespan(app: FastAPI):
 
     try:
         async with AsyncSessionLocal() as session:
-            await seed_all(session)
-            print("[seed] completed successfully")
+            stats = await seed_all(session, do_commit=True)
+            print(f"[seed] completed successfully: {stats}")
     except Exception as exc:
         print(f"[seed] Warning: {exc}")
         traceback.print_exc()

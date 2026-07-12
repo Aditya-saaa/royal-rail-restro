@@ -258,17 +258,21 @@ async def detailed_health(db: DbSession, _: DeveloperUser):
 
 @router.post("/seed")
 async def run_seed(
-    db: DbSession,
     x_seed_secret: Optional[str] = Header(default=None, alias="X-Seed-Secret"),
     authorization: Optional[str] = Header(default=None),
 ):
     """
     Seed / re-seed catalogue, roles, admin, content.
 
+    Uses a dedicated AsyncSession (not request-scoped get_db) so commit/rollback
+    is independent and avoids MissingGreenlet / double-transaction issues.
+
     Auth options:
     1. Header X-Seed-Secret matching SEED_SECRET env (for first deploy)
     2. Bearer token of an admin/superuser
     """
+    from app.db.session import AsyncSessionLocal
+
     allowed = False
     if settings.seed_secret and x_seed_secret and x_seed_secret == settings.seed_secret:
         allowed = True
@@ -279,10 +283,11 @@ async def run_seed(
 
         token = authorization.split(" ", 1)[1]
         try:
-            payload = decode_token(token)
-            user = await AuthService(db).get_user_by_id(payload.get("sub", ""))
-            if user and (user.is_superuser or user.has_role("admin")):
-                allowed = True
+            async with AsyncSessionLocal() as auth_db:
+                payload = decode_token(token)
+                user = await AuthService(auth_db).get_user_by_id(payload.get("sub", ""))
+                if user and (user.is_superuser or user.has_role("admin")):
+                    allowed = True
         except JWTError:
             allowed = False
 
@@ -297,17 +302,31 @@ async def run_seed(
         )
 
     try:
-        await seed_all(db)
+        async with AsyncSessionLocal() as session:
+            seed_stats = await seed_all(session, do_commit=True)
+            cats = (
+                await session.execute(select(func.count()).select_from(Category))
+            ).scalar() or 0
+            items = (
+                await session.execute(select(func.count()).select_from(MenuItem))
+            ).scalar() or 0
+            users = (
+                await session.execute(select(func.count()).select_from(User))
+            ).scalar() or 0
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Seed failed: {exc}") from exc
+        # Full message helps Render logs / API clients without needing stack traces
+        raise HTTPException(
+            status_code=500,
+            detail=f"Seed failed: {type(exc).__name__}: {exc}",
+        ) from exc
 
-    cats = (await db.execute(select(func.count()).select_from(Category))).scalar() or 0
-    items = (await db.execute(select(func.count()).select_from(MenuItem))).scalar() or 0
     return {
         "message": "Seed completed",
         "success": True,
         "categories": cats,
         "menu_items": items,
+        "users": users,
+        "seed_stats": seed_stats,
     }
 
 

@@ -33,7 +33,10 @@ class Category(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     meta_description: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
 
     items: Mapped[List["MenuItem"]] = relationship(
-        "MenuItem", back_populates="category", cascade="all, delete-orphan"
+        "MenuItem",
+        back_populates="category",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
 
@@ -73,9 +76,14 @@ class MenuItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     meta_title: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     meta_description: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
 
-    category: Mapped["Category"] = relationship("Category", back_populates="items")
+    category: Mapped["Category"] = relationship(
+        "Category", back_populates="items", lazy="selectin"
+    )
     ingredients: Mapped[List["Ingredient"]] = relationship(
-        "Ingredient", secondary="menu_item_ingredients", back_populates="menu_items"
+        "Ingredient",
+        secondary="menu_item_ingredients",
+        back_populates="menu_items",
+        lazy="selectin",
     )
 
 

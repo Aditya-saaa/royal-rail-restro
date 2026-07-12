@@ -20,11 +20,18 @@ class Role(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # lazy="selectin" avoids MissingGreenlet on async access
     users: Mapped[List["User"]] = relationship(
-        "User", secondary="user_roles", back_populates="roles"
+        "User",
+        secondary="user_roles",
+        back_populates="roles",
+        lazy="selectin",
     )
     permissions: Mapped[List["Permission"]] = relationship(
-        "Permission", secondary="role_permissions", back_populates="roles"
+        "Permission",
+        secondary="role_permissions",
+        back_populates="roles",
+        lazy="selectin",
     )
 
 
@@ -37,7 +44,10 @@ class Permission(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     module: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
 
     roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary="role_permissions", back_populates="permissions"
+        "Role",
+        secondary="role_permissions",
+        back_populates="permissions",
+        lazy="selectin",
     )
 
 
@@ -83,10 +93,16 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     preferences: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary="user_roles", back_populates="users"
+        "Role",
+        secondary="user_roles",
+        back_populates="users",
+        lazy="selectin",
     )
     customer: Mapped[Optional["Customer"]] = relationship(
-        "Customer", back_populates="user", uselist=False
+        "Customer",
+        back_populates="user",
+        uselist=False,
+        lazy="selectin",
     )
 
     def has_permission(self, code: str) -> bool:

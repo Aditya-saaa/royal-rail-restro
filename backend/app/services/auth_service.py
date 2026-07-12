@@ -65,16 +65,19 @@ class AuthService:
         role_result = await self.db.execute(select(Role).where(Role.name == "customer"))
         customer_role = role_result.scalar_one_or_none()
         if customer_role:
-            user.roles.append(customer_role)
+            # Explicit association insert — avoid lazy relationship mutation
+            from app.models.user import UserRole
 
+            self.db.add(UserRole(user_id=user.id, role_id=customer_role.id))
+            await self.db.flush()
         customer = Customer(
             user_id=user.id,
             referral_code=generate_referral_code(),
         )
         self.db.add(customer)
         await self.db.flush()
-        await self.db.refresh(user, attribute_names=["roles"])
-        return user
+        # Reload with roles for response
+        return await self.get_user_by_id(user.id)
 
     async def authenticate(self, email: str, password: str) -> User:
         user = await self.get_user_by_email(email)
