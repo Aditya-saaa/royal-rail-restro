@@ -14,7 +14,21 @@ router = APIRouter(tags=["Public"])
 
 
 @router.get("/restaurant")
-async def restaurant_info() -> dict[str, Any]:
+async def restaurant_info(db: DbSession) -> dict[str, Any]:
+    # Surface maintenance mode for frontend shell
+    from app.models.settings import SiteSetting
+
+    maint = (
+        await db.execute(select(SiteSetting).where(SiteSetting.key == "maintenance_mode"))
+    ).scalar_one_or_none()
+    maint_msg = (
+        await db.execute(
+            select(SiteSetting).where(SiteSetting.key == "maintenance_message")
+        )
+    ).scalar_one_or_none()
+    maintenance = bool(
+        maint and (maint.value or "").lower() in ("1", "true", "yes", "on")
+    )
     return {
         "name": settings.restaurant_name,
         "phone": settings.restaurant_phone,
@@ -54,6 +68,13 @@ async def restaurant_info() -> dict[str, Any]:
             "Pure Veg Options",
             "Parking Available",
         ],
+        "maintenance_mode": maintenance,
+        "maintenance_message": (
+            (maint_msg.value if maint_msg and maint_msg.value else None)
+            or "We are undergoing scheduled maintenance. Please check back shortly."
+        )
+        if maintenance
+        else None,
     }
 
 
@@ -194,6 +215,21 @@ async def home_payload(db: DbSession):
             "category": i.category.name if i.category else None,
         }
 
+    # CMS public settings (hero etc.)
+    from app.models.settings import SiteSetting
+    import json
+
+    settings_rows = (
+        await db.execute(select(SiteSetting).where(SiteSetting.is_public.is_(True)))
+    ).scalars().all()
+    cms = {r.key: r.value for r in settings_rows}
+    layout = None
+    if cms.get("homepage_layout_json"):
+        try:
+            layout = json.loads(cms["homepage_layout_json"])
+        except Exception:
+            layout = None
+
     return {
         "featured_dishes": [item_brief(i) for i in featured],
         "chef_specials": [item_brief(i) for i in chef],
@@ -246,6 +282,15 @@ async def home_payload(db: DbSession):
             "years": "5+",
             "rating": "4.8",
         },
+        "cms": {
+            "hero_title": cms.get("hero_title"),
+            "hero_subtitle": cms.get("hero_subtitle"),
+            "hero_image": cms.get("hero_image"),
+            "hero_video": cms.get("hero_video"),
+            "logo_url": cms.get("logo_url"),
+            "about_html": cms.get("about_html"),
+        },
+        "homepage_layout": layout,
     }
 
 

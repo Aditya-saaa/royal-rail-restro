@@ -114,19 +114,47 @@ export const contentApi = {
   deleteReview: (id: string) => api.delete(`/reviews/${id}`),
   gallery: (params?: { category?: string; featured_only?: boolean }) =>
     api.get<GalleryImage[]>('/gallery', { params }).then((r) => r.data),
+  galleryAdmin: () => api.get<GalleryImage[]>('/gallery/admin').then((r) => r.data),
   createGallery: (data: Partial<GalleryImage>) =>
     api.post<GalleryImage>('/gallery', data).then((r) => r.data),
+  updateGallery: (id: string, data: Partial<GalleryImage>) =>
+    api.patch<GalleryImage>(`/gallery/${id}`, data).then((r) => r.data),
+  deleteGallery: (id: string) => api.delete(`/gallery/${id}`),
   blog: (page = 1) =>
     api.get<Paginated<BlogPost>>('/blog', { params: { page } }).then((r) => r.data),
+  blogAdmin: (page = 1) =>
+    api.get<Paginated<BlogPost>>('/blog/admin/list', { params: { page } }).then((r) => r.data),
   blogPost: (slug: string) => api.get<BlogPost>(`/blog/${slug}`).then((r) => r.data),
   createBlog: (data: Partial<BlogPost>) => api.post<BlogPost>('/blog', data).then((r) => r.data),
+  updateBlog: (id: string, data: Partial<BlogPost>) =>
+    api.patch<BlogPost>(`/blog/id/${id}`, data).then((r) => r.data),
+  deleteBlog: (id: string) => api.delete(`/blog/id/${id}`),
   events: () => api.get<EventItem[]>('/events').then((r) => r.data),
-  createEvent: (data: Partial<EventItem>) => api.post<EventItem>('/events', data).then((r) => r.data),
+  eventsAdmin: () => api.get<EventItem[]>('/events/admin').then((r) => r.data),
+  createEvent: (data: Partial<EventItem> & Record<string, unknown>) =>
+    api.post<EventItem>('/events', data).then((r) => r.data),
+  updateEvent: (id: string, data: Partial<EventItem> & Record<string, unknown>) =>
+    api.patch<EventItem>(`/events/${id}`, data).then((r) => r.data),
+  deleteEvent: (id: string) => api.delete(`/events/${id}`),
   offers: () => api.get<Offer[]>('/offers').then((r) => r.data),
+  offersAdmin: () => api.get<Offer[]>('/offers/admin').then((r) => r.data),
   createOffer: (data: Partial<Offer>) => api.post<Offer>('/offers', data).then((r) => r.data),
+  updateOffer: (id: string, data: Partial<Offer>) =>
+    api.patch<Offer>(`/offers/${id}`, data).then((r) => r.data),
+  deleteOffer: (id: string) => api.delete(`/offers/${id}`),
   contact: (data: unknown) => api.post('/contact', data).then((r) => r.data),
   faqs: (category?: string) =>
     api.get<FAQ[]>('/faqs', { params: { category } }).then((r) => r.data),
+  createFaq: (data: Partial<FAQ>) => api.post<FAQ>('/faqs', data).then((r) => r.data),
+  updateFaq: (id: string, data: Partial<FAQ>) =>
+    api.patch<FAQ>(`/faqs/${id}`, data).then((r) => r.data),
+  deleteFaq: (id: string) => api.delete(`/faqs/${id}`),
+};
+
+export const cmsApiLayout = {
+  getHomepage: () => api.get('/cms/homepage-layout').then((r) => r.data),
+  putHomepage: (sections: unknown[]) =>
+    api.put('/cms/homepage-layout', { sections }).then((r) => r.data),
 };
 
 export const publicApi = {
@@ -138,21 +166,28 @@ export const publicApi = {
 };
 
 export const mediaApi = {
-  list: (params?: { folder?: string; search?: string; page?: number }) =>
-    api.get('/media', { params }).then((r) => r.data),
-  upload: async (file: File, folder = 'royal-rail-restro', alt_text = '') => {
+  list: (params?: { folder?: string; search?: string; page?: number; page_size?: number }) =>
+    api
+      .get<{ items: import('@/types').MediaAsset[]; meta?: unknown }>('/media', { params })
+      .then((r) => r.data),
+  upload: async (
+    file: File,
+    folder = 'royal-rail-restro',
+    alt_text = ''
+  ): Promise<import('@/types').MediaAsset> => {
     const form = new FormData();
     form.append('file', file);
     form.append('folder', folder);
-    form.append('alt_text', alt_text);
-    const { data } = await api.post('/media/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    form.append('alt_text', alt_text || file.name);
+    // Do NOT set Content-Type manually — browser sets multipart boundary
+    const { data } = await api.post<import('@/types').MediaAsset>('/media/upload', form);
     return data;
   },
   remove: (id: string) => api.delete(`/media/${id}`),
   update: (id: string, params: { alt_text?: string; folder?: string }) =>
-    api.patch(`/media/${id}`, null, { params }).then((r) => r.data),
+    api
+      .patch<import('@/types').MediaAsset>(`/media/${id}`, null, { params })
+      .then((r) => r.data),
 };
 
 export const featureApi = {
@@ -177,6 +212,9 @@ export const cmsApi = {
   theme: () => api.get('/cms/theme').then((r) => r.data),
   updateTheme: (values: Record<string, string>) =>
     api.put('/cms/theme', { values }).then((r) => r.data),
+  getHomepage: () => api.get('/cms/homepage-layout').then((r) => r.data),
+  putHomepage: (sections: unknown[]) =>
+    api.put('/cms/homepage-layout', { sections }).then((r) => r.data),
 };
 
 export const adminApi = {

@@ -145,6 +145,50 @@ async def create_gallery(data: GalleryImageCreate, db: DbSession, _: AdminUser):
     return await service.create_gallery(data)
 
 
+@router.get("/gallery/admin", response_model=List[GalleryImageOut])
+async def list_gallery_admin(db: DbSession, _: AdminUser):
+    """All gallery images including inactive (admin)."""
+    from app.models.content import GalleryImage as GalleryImageModel
+
+    result = await db.execute(
+        select(GalleryImageModel).order_by(
+            GalleryImageModel.sort_order, GalleryImageModel.created_at.desc()
+        )
+    )
+    return result.scalars().all()
+
+
+@router.patch("/gallery/{image_id}", response_model=GalleryImageOut)
+async def update_gallery(image_id: str, data: dict, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    img = await service.get_gallery(image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Gallery image not found")
+    allowed = {
+        "title",
+        "description",
+        "image_url",
+        "thumbnail_url",
+        "category",
+        "alt_text",
+        "sort_order",
+        "is_featured",
+        "is_active",
+    }
+    payload = {k: v for k, v in data.items() if k in allowed}
+    return await service.update_gallery(img, payload)
+
+
+@router.delete("/gallery/{image_id}", response_model=MessageResponse)
+async def delete_gallery(image_id: str, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    img = await service.get_gallery(image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Gallery image not found")
+    await service.delete_gallery(img)
+    return MessageResponse(message="Gallery image deleted")
+
+
 # ---- Blog ----
 @router.get("/blog", response_model=PaginatedResponse[BlogPostOut])
 async def list_blogs(
@@ -154,6 +198,18 @@ async def list_blogs(
 ):
     service = ContentService(db)
     items, total = await service.list_blogs(page=page, page_size=page_size)
+    return paginate(items, total, page, page_size)
+
+
+@router.get("/blog/admin/list", response_model=PaginatedResponse[BlogPostOut])
+async def list_blogs_admin(
+    db: DbSession,
+    _: AdminUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    service = ContentService(db)
+    items, total = await service.list_blogs_admin(page=page, page_size=page_size)
     return paginate(items, total, page, page_size)
 
 
@@ -172,6 +228,38 @@ async def create_blog(data: BlogPostCreate, db: DbSession, user: AdminUser):
     return await service.create_blog(data, author_id=user.id)
 
 
+@router.patch("/blog/id/{post_id}", response_model=BlogPostOut)
+async def update_blog(post_id: str, data: dict, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    post = await service.get_blog(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    allowed = {
+        "title",
+        "slug",
+        "excerpt",
+        "content",
+        "cover_image",
+        "tags",
+        "status",
+        "meta_title",
+        "meta_description",
+        "is_featured",
+    }
+    payload = {k: v for k, v in data.items() if k in allowed}
+    return await service.update_blog(post, payload)
+
+
+@router.delete("/blog/id/{post_id}", response_model=MessageResponse)
+async def delete_blog(post_id: str, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    post = await service.get_blog(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    await service.delete_blog(post)
+    return MessageResponse(message="Blog post deleted")
+
+
 # ---- Events ----
 @router.get("/events", response_model=List[EventOut])
 async def list_events(db: DbSession, upcoming_only: bool = True):
@@ -179,10 +267,49 @@ async def list_events(db: DbSession, upcoming_only: bool = True):
     return await service.list_events(upcoming_only=upcoming_only)
 
 
+@router.get("/events/admin", response_model=List[EventOut])
+async def list_events_admin(db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    return await service.list_events(upcoming_only=False)
+
+
 @router.post("/events", response_model=EventOut, status_code=status.HTTP_201_CREATED)
 async def create_event(data: EventCreate, db: DbSession, _: AdminUser):
     service = ContentService(db)
     return await service.create_event(data)
+
+
+@router.patch("/events/{event_id}", response_model=EventOut)
+async def update_event(event_id: str, data: dict, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    event = await service.get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    allowed = {
+        "title",
+        "slug",
+        "description",
+        "image_url",
+        "event_date",
+        "start_time",
+        "end_time",
+        "location",
+        "is_active",
+        "max_attendees",
+        "registration_required",
+    }
+    payload = {k: v for k, v in data.items() if k in allowed}
+    return await service.update_event(event, payload)
+
+
+@router.delete("/events/{event_id}", response_model=MessageResponse)
+async def delete_event(event_id: str, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    event = await service.get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    await service.delete_event(event)
+    return MessageResponse(message="Event deleted")
 
 
 # ---- Offers ----
@@ -192,10 +319,50 @@ async def list_offers(db: DbSession):
     return await service.list_offers()
 
 
+@router.get("/offers/admin", response_model=List[OfferOut])
+async def list_offers_admin(db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    return await service.list_offers(active_only=False)
+
+
 @router.post("/offers", response_model=OfferOut, status_code=status.HTTP_201_CREATED)
 async def create_offer(data: OfferCreate, db: DbSession, _: AdminUser):
     service = ContentService(db)
     return await service.create_offer(data)
+
+
+@router.patch("/offers/{offer_id}", response_model=OfferOut)
+async def update_offer(offer_id: str, data: dict, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    offer = await service.get_offer(offer_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    allowed = {
+        "title",
+        "slug",
+        "description",
+        "image_url",
+        "discount_label",
+        "coupon_code",
+        "starts_at",
+        "ends_at",
+        "is_active",
+        "is_featured",
+        "terms",
+        "sort_order",
+    }
+    payload = {k: v for k, v in data.items() if k in allowed}
+    return await service.update_offer(offer, payload)
+
+
+@router.delete("/offers/{offer_id}", response_model=MessageResponse)
+async def delete_offer(offer_id: str, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    offer = await service.get_offer(offer_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    await service.delete_offer(offer)
+    return MessageResponse(message="Offer deleted")
 
 
 # ---- Contact ----
@@ -228,6 +395,27 @@ async def list_faqs(db: DbSession, category: Optional[str] = None):
 async def create_faq(data: FAQCreate, db: DbSession, _: AdminUser):
     service = ContentService(db)
     return await service.create_faq(data)
+
+
+@router.patch("/faqs/{faq_id}", response_model=FAQOut)
+async def update_faq(faq_id: str, data: dict, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    faq = await service.get_faq(faq_id)
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ not found")
+    allowed = {"question", "answer", "category", "sort_order", "is_active"}
+    payload = {k: v for k, v in data.items() if k in allowed}
+    return await service.update_faq(faq, payload)
+
+
+@router.delete("/faqs/{faq_id}", response_model=MessageResponse)
+async def delete_faq(faq_id: str, db: DbSession, _: AdminUser):
+    service = ContentService(db)
+    faq = await service.get_faq(faq_id)
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ not found")
+    await service.delete_faq(faq)
+    return MessageResponse(message="FAQ deleted")
 
 
 # ---- Notifications ----

@@ -7,7 +7,7 @@ import { getErrorMessage, API_BASE } from '@/api/client';
 import { Seo, restaurantJsonLd } from '@/seo/Seo';
 import { MenuCard } from '@/components/menu/MenuCard';
 import { Button } from '@/components/ui/Button';
-import { SkeletonCard, PageLoader } from '@/components/ui/Spinner';
+import { SkeletonCard, HomeSkeleton } from '@/components/ui/Spinner';
 import { formatCurrency } from '@/lib/utils';
 import type { HomePayload } from '@/types';
 import { useFeatureStore } from '@/store/featureStore';
@@ -41,19 +41,21 @@ export default function HomePage() {
   const orderingOn = useFeatureStore((s) => s.isEnabled('online_ordering'));
   const reserveOn = useFeatureStore((s) => s.isEnabled('table_reservation'));
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching, isFetching: refreshing } = useQuery({
     queryKey: ['home'],
     queryFn: publicApi.home,
-    retry: 2,
-    staleTime: 60_000,
+    retry: 3,
+    staleTime: 2 * 60_000,
+    gcTime: 30 * 60_000,
+    placeholderData: (prev) => prev,
   });
 
-  // First load only — show spinner briefly
+  // Progressive: show branded skeleton instead of blank/spinner-only
   if (isLoading && !data) {
     return (
       <>
         <Seo />
-        <PageLoader />
+        <HomeSkeleton />
       </>
     );
   }
@@ -66,12 +68,31 @@ export default function HomePage() {
     !data.categories?.length &&
     !data.chef_specials?.length;
 
+  // Homepage builder layout from CMS (section enable flags)
+  const layoutSections = ((data as { homepage_layout?: { id: string; enabled: boolean }[] } | undefined)
+    ?.homepage_layout || []) as { id: string; enabled: boolean }[];
+  const layoutEnabled = (id: string) => {
+    if (!layoutSections.length) return true;
+    const s = layoutSections.find((x) => x.id === id);
+    return s ? s.enabled !== false : true;
+  };
+  const cms = (data as { cms?: Record<string, string | null | undefined> } | undefined)?.cms || {};
+  const heroTitle = cms.hero_title || 'Welcome to';
+  const heroSubtitle =
+    cms.hero_subtitle ||
+    'North Indian classics, sizzling tandoor, Indo-Chinese favourites and our legendary Rail Special Thali — crafted for families who love premium yet affordable dining.';
+  const heroImage =
+    cms.hero_image || 'https://placehold.co/720x480/1a1a1a/D4AF37?text=Royal+Rail+Dining';
+
   return (
     <>
       <Seo jsonLd={restaurantJsonLd} path="/" />
 
-      {(isError || apiEmpty) && (
+      {(isError || apiEmpty || refreshing) && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          {refreshing && !isError && !apiEmpty && (
+            <span>Updating live menu…</span>
+          )}
           {isError ? (
             <>
               Could not load live menu data ({getErrorMessage(error)}). Showing brand homepage.
@@ -80,7 +101,7 @@ export default function HomePage() {
                 Retry
               </button>
             </>
-          ) : (
+          ) : apiEmpty ? (
             <>
               Live catalogue is empty on the server. Seed the database (POST /api/v1/admin/seed) or
               redeploy backend after the seed fix.{' '}
@@ -88,11 +109,12 @@ export default function HomePage() {
                 Refresh
               </button>
             </>
-          )}
+          ) : null}
         </div>
       )}
 
       {/* Hero */}
+      {layoutEnabled('hero') && isVisible('home_hero') && (
       <section className="relative overflow-hidden bg-royal-gradient text-white">
         <div className="absolute inset-0 bg-rail-pattern opacity-40" aria-hidden />
         <div className="container-rrr relative grid items-center gap-10 py-16 lg:grid-cols-2 lg:py-24">
@@ -105,13 +127,16 @@ export default function HomePage() {
               🚂 Premium Family Dining · Gaya
             </p>
             <h1 className="font-display text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
-              Welcome to{' '}
-              <span className="text-gold-400">Royal Rail Restro</span>
+              {heroTitle.includes('Royal Rail') ? (
+                heroTitle
+              ) : (
+                <>
+                  {heroTitle}{' '}
+                  <span className="text-gold-400">Royal Rail Restro</span>
+                </>
+              )}
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-cream-200/90">
-              North Indian classics, sizzling tandoor, Indo-Chinese favourites and our legendary
-              Rail Special Thali — crafted for families who love premium yet affordable dining.
-            </p>
+            <p className="mt-5 max-w-xl text-lg text-cream-200/90">{heroSubtitle}</p>
             <div className="mt-8 flex flex-wrap gap-3">
               {orderingOn ? (
                 <Link to="/menu">
@@ -149,13 +174,26 @@ export default function HomePage() {
             className="relative"
           >
             <div className="glass rounded-3xl p-3">
-              <img
-                src="https://placehold.co/720x480/1a1a1a/D4AF37?text=Royal+Rail+Dining"
-                alt="Royal Rail Restro dining experience"
-                className="h-auto w-full rounded-2xl object-cover"
-                width={720}
-                height={480}
-              />
+              {cms.hero_video ? (
+                <video
+                  className="h-auto w-full rounded-2xl object-cover"
+                  src={cms.hero_video}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  poster={heroImage}
+                  aria-label="Royal Rail Restro dining experience"
+                />
+              ) : (
+                <img
+                  src={heroImage}
+                  alt="Royal Rail Restro dining experience"
+                  className="h-auto w-full rounded-2xl object-cover"
+                  width={720}
+                  height={480}
+                />
+              )}
             </div>
             <div className="absolute -bottom-4 -left-4 rounded-2xl bg-gold-400 px-4 py-3 text-charcoal-900 shadow-gold">
               <p className="text-xs font-semibold uppercase tracking-wide">Guest Rating</p>
@@ -164,8 +202,10 @@ export default function HomePage() {
           </motion.div>
         </div>
       </section>
+      )}
 
       {/* Stats */}
+      {layoutEnabled('stats') && (
       <section className="border-b border-charcoal-100 bg-white dark:border-charcoal-700 dark:bg-charcoal-800">
         <div className="container-rrr grid grid-cols-2 gap-6 py-10 md:grid-cols-4">
           {[
@@ -184,9 +224,10 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Categories */}
-      {isVisible('home_categories') && (
+      {layoutEnabled('categories') && isVisible('home_categories') && (
       <section className="container-rrr py-16">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
@@ -217,7 +258,7 @@ export default function HomePage() {
       )}
 
       {/* Signature / Featured */}
-      {isVisible('home_featured_dishes') && (
+      {layoutEnabled('featured') && isVisible('home_featured_dishes') && (
       <section className="bg-cream-100 py-16 dark:bg-charcoal-950">
         <div className="container-rrr">
           <h2 className="section-title">Signature Dishes</h2>
@@ -239,7 +280,7 @@ export default function HomePage() {
       )}
 
       {/* Why choose us / awards */}
-      {isVisible('home_awards') && (
+      {layoutEnabled('awards') && isVisible('home_awards') && (
         <section className="container-rrr py-12">
           <h2 className="section-title text-center">Why Choose Royal Rail</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -259,7 +300,7 @@ export default function HomePage() {
       )}
 
       {/* Offers */}
-      {isVisible('home_offers') && (home.offers?.length ?? 0) > 0 && (
+      {layoutEnabled('offers') && isVisible('home_offers') && (home.offers?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">Today&apos;s Offers</h2>
           <p className="section-subtitle mb-8">Save more on your favourite meals</p>
@@ -288,7 +329,7 @@ export default function HomePage() {
       )}
 
       {/* Chef specials */}
-      {isVisible('home_chef_specials') && (home.chef_specials?.length ?? 0) > 0 && (
+      {layoutEnabled('chef') && isVisible('home_chef_specials') && (home.chef_specials?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <div className="mb-8 flex items-end justify-between">
             <div>
@@ -308,7 +349,7 @@ export default function HomePage() {
       )}
 
       {/* Rail specials CTA */}
-      {isVisible('home_rail_specials') && (
+      {layoutEnabled('rail') && isVisible('home_rail_specials') && (
       <section className="bg-charcoal-900 py-16 text-white">
         <div className="container-rrr grid items-center gap-10 lg:grid-cols-2">
           <div>
@@ -345,7 +386,7 @@ export default function HomePage() {
       )}
 
       {/* Story */}
-      {isVisible('home_story') && (
+      {layoutEnabled('story') && isVisible('home_story') && (
         <section className="container-rrr py-16">
           <div className="grid items-center gap-10 lg:grid-cols-2">
             <div>
@@ -370,7 +411,7 @@ export default function HomePage() {
       )}
 
       {/* Testimonials */}
-      {isVisible('home_testimonials') && (home.testimonials?.length ?? 0) > 0 && (
+      {layoutEnabled('testimonials') && isVisible('home_testimonials') && (home.testimonials?.length ?? 0) > 0 && (
         <section className="container-rrr py-16">
           <h2 className="section-title">What Guests Say</h2>
           <p className="section-subtitle mb-8">Real reviews from our dining family</p>
@@ -400,7 +441,7 @@ export default function HomePage() {
       )}
 
       {/* Gallery strip */}
-      {isVisible('home_gallery') && (home.gallery?.length ?? 0) > 0 && (
+      {layoutEnabled('gallery') && isVisible('home_gallery') && (home.gallery?.length ?? 0) > 0 && (
         <section className="bg-cream-100 py-16 dark:bg-charcoal-950">
           <div className="container-rrr">
             <h2 className="section-title">Moments at Royal Rail</h2>
@@ -426,7 +467,7 @@ export default function HomePage() {
       )}
 
       {/* Reservation CTA */}
-      {isVisible('home_reservation_cta') && reserveOn && (
+      {layoutEnabled('reservation_cta') && isVisible('home_reservation_cta') && reserveOn && (
       <section className="container-rrr py-16">
         <div className="card overflow-hidden bg-royal-gradient p-8 text-white md:p-12">
           <div className="max-w-2xl">
@@ -446,6 +487,7 @@ export default function HomePage() {
       )}
 
       {/* Map */}
+      {layoutEnabled('map') && (
       <section className="border-t border-charcoal-100 bg-white py-12 dark:border-charcoal-700 dark:bg-charcoal-800">
         <div className="container-rrr">
           <h2 className="section-title mb-6">Find Us</h2>
@@ -463,6 +505,7 @@ export default function HomePage() {
           </p>
         </div>
       </section>
+      )}
     </>
   );
 }

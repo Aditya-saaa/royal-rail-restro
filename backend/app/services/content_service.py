@@ -118,6 +118,21 @@ class ContentService:
         await self.db.refresh(img)
         return img
 
+    async def get_gallery(self, image_id: str) -> Optional[GalleryImage]:
+        return (
+            await self.db.execute(select(GalleryImage).where(GalleryImage.id == image_id))
+        ).scalar_one_or_none()
+
+    async def update_gallery(self, img: GalleryImage, data: dict) -> GalleryImage:
+        apply_updates(img, data)
+        await self.db.flush()
+        await self.db.refresh(img)
+        return img
+
+    async def delete_gallery(self, img: GalleryImage) -> None:
+        await self.db.delete(img)
+        await self.db.flush()
+
     # Blog
     async def list_blogs(
         self, published_only: bool = True, page: int = 1, page_size: int = 10
@@ -151,11 +166,46 @@ class ContentService:
         await self.db.refresh(post)
         return post
 
+    async def get_blog(self, post_id: str) -> Optional[BlogPost]:
+        return (
+            await self.db.execute(select(BlogPost).where(BlogPost.id == post_id))
+        ).scalar_one_or_none()
+
+    async def update_blog(self, post: BlogPost, data: dict) -> BlogPost:
+        if "title" in data and data["title"] and "slug" not in data:
+            data["slug"] = slugify(data["title"])
+        if data.get("status") == "published" and not post.published_at:
+            data["published_at"] = datetime.now(timezone.utc)
+        apply_updates(post, data)
+        await self.db.flush()
+        await self.db.refresh(post)
+        return post
+
+    async def delete_blog(self, post: BlogPost) -> None:
+        await self.db.delete(post)
+        await self.db.flush()
+
+    async def list_blogs_admin(
+        self, page: int = 1, page_size: int = 20
+    ) -> Tuple[Sequence[BlogPost], int]:
+        count_q = select(func.count()).select_from(BlogPost)
+        total = (await self.db.execute(count_q)).scalar() or 0
+        q = (
+            select(BlogPost)
+            .order_by(BlogPost.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return (await self.db.execute(q)).scalars().all(), total
+
     # Events
     async def list_events(self, upcoming_only: bool = True) -> Sequence[Event]:
-        q = select(Event).where(Event.is_active.is_(True))
+        q = select(Event)
         if upcoming_only:
-            q = q.where(Event.event_date >= datetime.now(timezone.utc).date())
+            q = q.where(
+                Event.is_active.is_(True),
+                Event.event_date >= datetime.now(timezone.utc).date(),
+            )
         q = q.order_by(Event.event_date)
         return (await self.db.execute(q)).scalars().all()
 
@@ -166,6 +216,23 @@ class ContentService:
         await self.db.flush()
         await self.db.refresh(event)
         return event
+
+    async def get_event(self, event_id: str) -> Optional[Event]:
+        return (
+            await self.db.execute(select(Event).where(Event.id == event_id))
+        ).scalar_one_or_none()
+
+    async def update_event(self, event: Event, data: dict) -> Event:
+        if "title" in data and data["title"] and "slug" not in data:
+            data["slug"] = slugify(data["title"])
+        apply_updates(event, data)
+        await self.db.flush()
+        await self.db.refresh(event)
+        return event
+
+    async def delete_event(self, event: Event) -> None:
+        await self.db.delete(event)
+        await self.db.flush()
 
     # Offers
     async def list_offers(self, active_only: bool = True) -> Sequence[Offer]:
@@ -182,6 +249,38 @@ class ContentService:
         await self.db.flush()
         await self.db.refresh(offer)
         return offer
+
+    async def get_offer(self, offer_id: str) -> Optional[Offer]:
+        return (
+            await self.db.execute(select(Offer).where(Offer.id == offer_id))
+        ).scalar_one_or_none()
+
+    async def update_offer(self, offer: Offer, data: dict) -> Offer:
+        if "title" in data and data["title"] and "slug" not in data:
+            data["slug"] = slugify(data["title"])
+        apply_updates(offer, data)
+        await self.db.flush()
+        await self.db.refresh(offer)
+        return offer
+
+    async def delete_offer(self, offer: Offer) -> None:
+        await self.db.delete(offer)
+        await self.db.flush()
+
+    async def get_faq(self, faq_id: str) -> Optional[FAQ]:
+        return (
+            await self.db.execute(select(FAQ).where(FAQ.id == faq_id))
+        ).scalar_one_or_none()
+
+    async def update_faq(self, faq: FAQ, data: dict) -> FAQ:
+        apply_updates(faq, data)
+        await self.db.flush()
+        await self.db.refresh(faq)
+        return faq
+
+    async def delete_faq(self, faq: FAQ) -> None:
+        await self.db.delete(faq)
+        await self.db.flush()
 
     # Contact
     async def create_message(self, data: ContactMessageCreate) -> Message:

@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     auth,
     cms,
     content,
+    developer,
     features,
     media,
     menu,
@@ -31,3 +32,4 @@ api_router.include_router(features.router)
 api_router.include_router(media.router)
 api_router.include_router(cms.router)
 api_router.include_router(ops.router)
+api_router.include_router(developer.router)

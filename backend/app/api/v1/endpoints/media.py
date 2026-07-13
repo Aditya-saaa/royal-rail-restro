@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
-from app.api.deps import AdminUser, CurrentUser, DbSession
+from app.api.deps import AdminUser, DbSession
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.media_service import MediaService
 from app.utils.helpers import paginate
@@ -60,24 +60,26 @@ async def list_media(
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_media(
     db: DbSession,
-    user: CurrentUser,
-    _: AdminUser,
+    user: AdminUser,
     file: UploadFile = File(...),
     folder: str = Form("royal-rail-restro"),
     alt_text: str = Form(""),
 ):
+    """Single auth dependency (AdminUser) avoids double-resolve edge cases."""
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     if len(data) > 12 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 12MB)")
+    # Sanitize folder
+    safe_folder = (folder or "royal-rail-restro").strip().replace("..", "")[:100]
     service = MediaService(db)
     try:
         asset = await service.upload(
             file_bytes=data,
             filename=file.filename or "upload.jpg",
-            folder=folder,
-            alt_text=alt_text,
+            folder=safe_folder,
+            alt_text=alt_text or (file.filename or ""),
             uploaded_by=user.id,
             content_type=file.content_type or "image/jpeg",
         )

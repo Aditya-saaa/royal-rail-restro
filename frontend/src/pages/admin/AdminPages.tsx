@@ -14,7 +14,7 @@ import {
 import { Line } from 'react-chartjs-2';
 import { adminApi, menuApi, orderApi, reservationApi, contentApi } from '@/api/services';
 import { Seo } from '@/seo/Seo';
-import { PageLoader } from '@/components/ui/Spinner';
+import { PageLoader, AdminPageSkeleton } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useState } from 'react';
@@ -23,17 +23,42 @@ import { getErrorMessage } from '@/api/client';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
 export function AdminDashboard() {
-  const { data, isLoading } = useQuery({ queryKey: ['admin-dash'], queryFn: adminApi.dashboard });
-  if (isLoading || !data) return <PageLoader />;
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['admin-dash'],
+    queryFn: adminApi.dashboard,
+    staleTime: 60_000,
+    placeholderData: (p) => p,
+  });
+
+  if (isLoading && !data) {
+    return (
+      <>
+        <Seo title="Admin Dashboard" noindex />
+        <AdminPageSkeleton />
+      </>
+    );
+  }
+
+  if (isError && !data) {
+    return (
+      <div className="card border-red-200">
+        <p className="font-semibold text-red-700">Dashboard failed to load</p>
+        <p className="mt-1 text-sm text-charcoal-500">{getErrorMessage(error)}</p>
+        <Button className="mt-4" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   const chartData = {
-    labels: data.revenue_series.map((d) => d.date.slice(5)),
+    labels: data!.revenue_series.map((d) => d.date.slice(5)),
     datasets: [
       {
         label: 'Revenue (₹)',
-        data: data.revenue_series.map((d) => d.revenue),
+        data: data!.revenue_series.map((d) => d.revenue),
         borderColor: '#8B0000',
-        backgroundColor: 'rgba(139,0,0,0.1)',
+        backgroundColor: 'rgba(139,0,0,0.08)',
         fill: true,
         tension: 0.35,
       },
@@ -41,52 +66,82 @@ export function AdminDashboard() {
   };
 
   const cards = [
-    { label: "Today's Orders", value: data.today_orders },
-    { label: 'Total Orders', value: data.total_orders },
-    { label: 'Month Revenue', value: formatCurrency(data.month_revenue) },
-    { label: 'Total Revenue', value: formatCurrency(data.total_revenue) },
-    { label: 'Customers', value: data.total_users },
-    { label: 'New (7d)', value: data.new_users_week },
-    { label: 'Pending Reservations', value: data.pending_reservations },
-    { label: "Today's Reservations", value: data.today_reservations },
-    { label: 'Pending Reviews', value: data.pending_reviews },
-    { label: 'New Messages', value: data.new_messages },
+    { label: "Today's Orders", value: data!.today_orders, tone: 'royal' },
+    { label: 'Total Orders', value: data!.total_orders, tone: 'charcoal' },
+    { label: 'Month Revenue', value: formatCurrency(data!.month_revenue), tone: 'gold' },
+    { label: 'Total Revenue', value: formatCurrency(data!.total_revenue), tone: 'gold' },
+    { label: 'Customers', value: data!.total_users, tone: 'charcoal' },
+    { label: 'New (7d)', value: data!.new_users_week, tone: 'royal' },
+    { label: 'Pending Reservations', value: data!.pending_reservations, tone: 'amber' },
+    { label: "Today's Reservations", value: data!.today_reservations, tone: 'royal' },
+    { label: 'Pending Reviews', value: data!.pending_reviews, tone: 'amber' },
+    { label: 'New Messages', value: data!.new_messages, tone: 'amber' },
   ];
 
   return (
     <>
       <Seo title="Admin Dashboard" noindex />
-      <h1 className="mb-6 font-display text-2xl font-bold">Dashboard</h1>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-charcoal-900 dark:text-cream-50">
+            Dashboard
+          </h1>
+          <p className="text-sm text-charcoal-500">
+            Live operations snapshot{isFetching ? ' · updating…' : ''}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} loading={isFetching}>
+          Refresh
+        </Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((c) => (
-          <div key={c.label} className="card">
-            <p className="text-xs font-medium uppercase tracking-wide text-charcoal-400">{c.label}</p>
-            <p className="mt-2 font-display text-2xl font-bold text-royal-700 dark:text-gold-400">{c.value}</p>
+          <div
+            key={c.label}
+            className="rounded-2xl border border-charcoal-100/80 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-charcoal-700 dark:bg-charcoal-800"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+              {c.label}
+            </p>
+            <p className="mt-2 font-display text-2xl font-bold text-royal-700 dark:text-gold-400">
+              {c.value}
+            </p>
           </div>
         ))}
       </div>
-      <div className="card mt-8">
-        <h2 className="mb-4 font-display text-lg font-semibold">Revenue — last 7 days</h2>
-        <div className="h-72">
-          <Line
-            data={chartData}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { display: false } },
-              scales: { y: { beginAtZero: true } },
-            }}
-          />
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="rounded-2xl border border-charcoal-100 bg-white p-5 shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800 lg:col-span-2">
+          <h2 className="mb-4 font-display text-lg font-semibold">Revenue — last 7 days</h2>
+          <div className="h-72">
+            <Line
+              data={chartData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' } },
+                  x: { grid: { display: false } },
+                },
+              }}
+            />
+          </div>
         </div>
-      </div>
-      <div className="card mt-6">
-        <h2 className="mb-3 font-display text-lg font-semibold">Orders by status</h2>
-        <div className="flex flex-wrap gap-3">
-          {Object.entries(data.orders_by_status).map(([k, v]) => (
-            <span key={k} className="rounded-full bg-charcoal-100 px-3 py-1 text-sm capitalize dark:bg-charcoal-700">
-              {k}: <strong>{v}</strong>
-            </span>
-          ))}
+        <div className="rounded-2xl border border-charcoal-100 bg-white p-5 shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+          <h2 className="mb-4 font-display text-lg font-semibold">Orders by status</h2>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(data!.orders_by_status).map(([k, v]) => (
+              <span
+                key={k}
+                className="rounded-full bg-charcoal-50 px-3 py-1.5 text-sm capitalize dark:bg-charcoal-900"
+              >
+                {k}: <strong className="text-royal-700 dark:text-gold-400">{v}</strong>
+              </span>
+            ))}
+            {!Object.keys(data!.orders_by_status).length && (
+              <p className="text-sm text-charcoal-500">No orders yet.</p>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -213,24 +268,45 @@ export function AdminMenu() {
 
 export function AdminUsers() {
   const [search, setSearch] = useState('');
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-users', search],
-    queryFn: () => adminApi.users(1, search || undefined),
+  const [debounced, setDebounced] = useState('');
+  // Debounce search input
+  useState(() => {
+    /* placeholder to keep imports stable if needed */
   });
-  if (isLoading) return <PageLoader />;
+  const onSearch = (v: string) => {
+    setSearch(v);
+    window.clearTimeout((onSearch as unknown as { t?: number }).t);
+    (onSearch as unknown as { t?: number }).t = window.setTimeout(() => setDebounced(v), 300);
+  };
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['admin-users', debounced],
+    queryFn: () => adminApi.users(1, debounced || undefined),
+    staleTime: 60_000,
+    placeholderData: (p) => p,
+  });
+  if (isLoading && !data) return <AdminPageSkeleton />;
   return (
     <>
       <Seo title="Users" noindex />
-      <h1 className="mb-4 font-display text-2xl font-bold">Users</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold">Users</h1>
+        <Button variant="outline" size="sm" onClick={() => refetch()} loading={isFetching}>
+          Refresh
+        </Button>
+      </div>
       <input
         className="input mb-4 max-w-sm"
         placeholder="Search users…"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => onSearch(e.target.value)}
+        aria-label="Search users"
       />
       <div className="space-y-2">
         {data?.items.map((u) => (
-          <div key={u.id} className="card flex justify-between text-sm">
+          <div
+            key={u.id}
+            className="flex justify-between rounded-2xl border border-charcoal-100 bg-white p-4 text-sm shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800"
+          >
             <div>
               <p className="font-semibold">{u.full_name}</p>
               <p className="text-charcoal-400">{u.email}</p>
@@ -243,6 +319,11 @@ export function AdminUsers() {
             </div>
           </div>
         ))}
+        {!data?.items.length && (
+          <p className="rounded-2xl border border-dashed p-8 text-center text-sm text-charcoal-500">
+            No users found.
+          </p>
+        )}
       </div>
     </>
   );

@@ -1,7 +1,7 @@
 /**
  * Operations: Kitchen, Reservation Calendar, Homepage Builder, Analytics exports
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, API_BASE, getErrorMessage } from '@/api/client';
 import { orderApi, reservationApi } from '@/api/services';
@@ -11,16 +11,16 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-function authHeaders(): Record<string, string> {
-  const t = localStorage.getItem('rrr_access_token');
-
-  if (!t) {
-    return {};
-  }
-
-  return {
-    Authorization: `Bearer ${t}`,
+/** Explicit HeadersInit-safe auth helper for native fetch() */
+function authHeaders(): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
   };
+  const token = localStorage.getItem('rrr_access_token');
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 /* -------------------- Kitchen -------------------- */

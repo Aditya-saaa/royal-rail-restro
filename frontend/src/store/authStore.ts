@@ -90,8 +90,11 @@ export const useAuthStore = create<AuthState>()(
       isDeveloper: () => {
         const u = get().user;
         if (!u) return false;
+        // Superusers and admins can open developer console in production
         if (u.is_superuser) return true;
-        return u.roles.some((r) => r.name === 'admin' || r.name === 'developer');
+        return u.roles.some((r) =>
+          ['admin', 'developer', 'manager'].includes(r.name)
+        );
       },
     }),
     {

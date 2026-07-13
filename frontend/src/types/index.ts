@@ -133,23 +133,33 @@ export interface Offer {
 
 export interface Review {
   id: string;
+  user_id?: string | null;
+  menu_item_id?: string | null;
+  order_id?: string | null;
   guest_name?: string | null;
   rating: number;
   title?: string | null;
   comment?: string | null;
-  admin_reply?: string | null;
   is_approved: boolean;
   is_featured: boolean;
+  admin_reply?: string | null;
+  replied_at?: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface GalleryImage {
   id: string;
   title: string;
+  description?: string | null;
   image_url: string;
+  thumbnail_url?: string | null;
   alt_text: string;
   category: string;
+  sort_order?: number;
   is_featured: boolean;
+  is_active?: boolean;
+  created_at?: string;
 }
 
 export interface BlogPost {
@@ -163,6 +173,11 @@ export interface BlogPost {
   status: string;
   published_at?: string | null;
   views: number;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  is_featured?: boolean;
+  author_id?: string | null;
+  created_at?: string;
 }
 
 export interface FAQ {
@@ -170,6 +185,8 @@ export interface FAQ {
   question: string;
   answer: string;
   category: string;
+  sort_order?: number;
+  is_active?: boolean;
 }
 
 export interface EventItem {
@@ -182,6 +199,27 @@ export interface EventItem {
   start_time?: string | null;
   end_time?: string | null;
   location: string;
+  is_active?: boolean;
+  max_attendees?: number | null;
+  registration_required?: boolean;
+}
+
+export interface MediaAsset {
+  id: string;
+  filename?: string;
+  original_name: string;
+  url: string;
+  secure_url?: string | null;
+  public_id?: string | null;
+  resource_type?: string;
+  format?: string | null;
+  width?: number | null;
+  height?: number | null;
+  bytes?: number | null;
+  folder?: string | null;
+  alt_text?: string | null;
+  created_at?: string;
+  thumbnail?: string | null;
 }
 
 export interface PaginationMeta {
@@ -212,6 +250,24 @@ export interface HomePayload {
     years: string;
     rating: string;
   };
+  cms?: Record<string, string | null | undefined>;
+  homepage_layout?: { id: string; label?: string; enabled: boolean; order?: number }[];
+}
+
+export interface RestaurantInfo {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  currency: string;
+  gst_percent: number;
+  cuisines: string[];
+  hours: Record<string, string>;
+  features: string[];
+  maintenance_mode?: boolean;
+  maintenance_message?: string | null;
 }
 
 export interface DashboardStats {
@@ -227,18 +283,4 @@ export interface DashboardStats {
   new_messages: number;
   orders_by_status: Record<string, number>;
   revenue_series: { date: string; revenue: number }[];
-}
-
-export interface RestaurantInfo {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  currency: string;
-  gst_percent: number;
-  cuisines: string[];
-  hours: Record<string, string>;
-  features: string[];
 }

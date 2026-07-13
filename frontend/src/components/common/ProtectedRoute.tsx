@@ -21,14 +21,17 @@ export function ProtectedRoute({ children, roles }: Props) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (roles?.includes('admin') && !isAdmin()) {
-    return <Navigate to="/" replace />;
-  }
-  if (roles?.includes('staff') && !isStaff()) {
-    return <Navigate to="/" replace />;
-  }
-  if (roles?.includes('developer') && !isDeveloper()) {
-    return <Navigate to="/" replace />;
+  // Role gate: require ANY of the listed roles (not all)
+  if (roles && roles.length > 0) {
+    const allowed =
+      (roles.includes('admin') && isAdmin()) ||
+      (roles.includes('staff') && isStaff()) ||
+      (roles.includes('developer') && isDeveloper()) ||
+      (roles.includes('customer') && !!user) ||
+      user.is_superuser;
+    if (!allowed) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

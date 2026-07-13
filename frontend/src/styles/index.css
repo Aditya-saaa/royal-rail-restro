@@ -90,6 +90,11 @@
     @apply animate-pulse rounded-xl bg-charcoal-100 dark:bg-charcoal-700;
   }
 
+  /* Premium admin surfaces */
+  .admin-surface {
+    @apply rounded-2xl border border-charcoal-100/80 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800;
+  }
+
   .page-enter {
     @apply animate-fade-in;
   }

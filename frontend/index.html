@@ -18,7 +18,22 @@
     <title>Royal Rail Restro | Best Family Restaurant in Gaya, Bihar</title>
   </head>
   <body class="bg-cream-50 text-charcoal-800 antialiased">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Instant shell before React hydrates (no blank white) -->
+      <div
+        id="boot-shell"
+        style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1A1A1A 0%,#4a0000 50%,#1A1A1A 100%);color:#F5F0E8;font-family:system-ui,sans-serif;text-align:center;padding:24px;"
+      >
+        <div style="font-size:40px;margin-bottom:12px;">🚂</div>
+        <div style="font-size:22px;font-weight:700;color:#D4AF37;">Royal Rail Restro</div>
+        <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;opacity:0.7;margin-top:4px;">Gaya · Bihar</div>
+        <div style="margin-top:28px;font-size:14px;opacity:0.85;">Preparing your Royal Rail experience…</div>
+        <div style="margin-top:16px;width:180px;height:4px;background:rgba(255,255,255,0.12);border-radius:999px;overflow:hidden;">
+          <div style="width:40%;height:100%;background:#D4AF37;border-radius:999px;animation:bootbar 1.2s ease-in-out infinite;"></div>
+        </div>
+        <style>@keyframes bootbar{0%{transform:translateX(-100%)}100%{transform:translateX(280%)}}</style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
