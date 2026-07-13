@@ -88,6 +88,14 @@ async def list_items(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
+    from app.services.feature_service import FeatureService
+
+    # Public menu listing respects module toggle (admin bulk uses other routes)
+    if not await FeatureService(db).is_enabled("menu"):
+        raise HTTPException(
+            status_code=503,
+            detail="Menu is currently unavailable.",
+        )
     filters = MenuItemFilter(
         search=search,
         category_id=category_id,

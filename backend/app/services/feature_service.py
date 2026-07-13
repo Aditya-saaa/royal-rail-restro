@@ -11,9 +11,17 @@ from app.models.settings import FeatureFlag
 
 # Catalog of owner-facing toggles (seeded if missing)
 FEATURE_CATALOG: list[dict[str, Any]] = [
-    # Customer
+    # Customer-facing pages (nav + routes)
+    {"key": "menu", "category": "customer", "description": "Menu page (nav + /menu)", "enabled": True, "visible": True},
     {"key": "online_ordering", "category": "customer", "description": "Online ordering (cart & checkout)", "enabled": True, "visible": True},
     {"key": "table_reservation", "category": "customer", "description": "Table reservations", "enabled": True, "visible": True},
+    {"key": "offers", "category": "customer", "description": "Offers page (/offers)", "enabled": True, "visible": True},
+    {"key": "events", "category": "customer", "description": "Events page (/events)", "enabled": True, "visible": True},
+    {"key": "gallery", "category": "customer", "description": "Gallery page (/gallery)", "enabled": True, "visible": True},
+    {"key": "blog", "category": "customer", "description": "Blog page (/blog)", "enabled": True, "visible": True},
+    {"key": "reviews", "category": "customer", "description": "Reviews page", "enabled": True, "visible": True},
+    {"key": "contact_form", "category": "customer", "description": "Contact form", "enabled": True, "visible": True},
+    {"key": "search", "category": "customer", "description": "Site search", "enabled": True, "visible": True},
     {"key": "delivery", "category": "customer", "description": "Delivery order type", "enabled": True, "visible": True},
     {"key": "pickup", "category": "customer", "description": "Pickup order type", "enabled": True, "visible": True},
     {"key": "dine_in_ordering", "category": "customer", "description": "Dine-in ordering", "enabled": True, "visible": True},
@@ -22,13 +30,7 @@ FEATURE_CATALOG: list[dict[str, Any]] = [
     {"key": "coupons", "category": "customer", "description": "Coupon codes at checkout", "enabled": True, "visible": True},
     {"key": "wishlist", "category": "customer", "description": "Wishlist / favorites", "enabled": False, "visible": False},
     {"key": "user_accounts", "category": "customer", "description": "Customer accounts", "enabled": True, "visible": True},
-    {"key": "reviews", "category": "customer", "description": "Customer reviews", "enabled": True, "visible": True},
     {"key": "ratings", "category": "customer", "description": "Dish ratings", "enabled": True, "visible": True},
-    {"key": "search", "category": "customer", "description": "Site search", "enabled": True, "visible": True},
-    {"key": "blog", "category": "customer", "description": "Blog", "enabled": True, "visible": True},
-    {"key": "events", "category": "customer", "description": "Events", "enabled": True, "visible": True},
-    {"key": "gallery", "category": "customer", "description": "Gallery", "enabled": True, "visible": True},
-    {"key": "contact_form", "category": "customer", "description": "Contact form", "enabled": True, "visible": True},
     {"key": "whatsapp_chat", "category": "customer", "description": "WhatsApp chat button", "enabled": True, "visible": True},
     {"key": "live_chat", "category": "customer", "description": "Live chat widget", "enabled": False, "visible": False},
     {"key": "notifications", "category": "customer", "description": "In-app notifications", "enabled": True, "visible": True},
@@ -38,13 +40,13 @@ FEATURE_CATALOG: list[dict[str, Any]] = [
     {"key": "home_hero", "category": "homepage", "description": "Hero section", "enabled": True, "visible": True},
     {"key": "home_featured_dishes", "category": "homepage", "description": "Featured dishes", "enabled": True, "visible": True},
     {"key": "home_categories", "category": "homepage", "description": "Categories grid", "enabled": True, "visible": True},
-    {"key": "home_chef_specials", "category": "homepage", "description": "Chef specials", "enabled": True, "visible": True},
-    {"key": "home_rail_specials", "category": "homepage", "description": "Rail specials", "enabled": True, "visible": True},
+    {"key": "home_chef_specials", "category": "homepage", "description": "Chef specials page + home strip", "enabled": True, "visible": True},
+    {"key": "home_rail_specials", "category": "homepage", "description": "Rail Special Thali page + home strip", "enabled": True, "visible": True},
     {"key": "home_testimonials", "category": "homepage", "description": "Testimonials", "enabled": True, "visible": True},
     {"key": "home_instagram", "category": "homepage", "description": "Instagram feed", "enabled": False, "visible": False},
-    {"key": "home_events", "category": "homepage", "description": "Events strip", "enabled": True, "visible": True},
-    {"key": "home_offers", "category": "homepage", "description": "Offers section", "enabled": True, "visible": True},
-    {"key": "home_gallery", "category": "homepage", "description": "Gallery strip", "enabled": True, "visible": True},
+    {"key": "home_events", "category": "homepage", "description": "Events on homepage", "enabled": True, "visible": True},
+    {"key": "home_offers", "category": "homepage", "description": "Offers on homepage", "enabled": True, "visible": True},
+    {"key": "home_gallery", "category": "homepage", "description": "Gallery on homepage", "enabled": True, "visible": True},
     {"key": "home_story", "category": "homepage", "description": "Restaurant story", "enabled": True, "visible": True},
     {"key": "home_awards", "category": "homepage", "description": "Awards / why choose us", "enabled": True, "visible": True},
     {"key": "home_google_reviews", "category": "homepage", "description": "Google reviews embed", "enabled": False, "visible": False},
@@ -167,6 +169,38 @@ class FeatureService:
         description: Optional[str] = None,
     ) -> dict[str, Any]:
         await self.ensure_catalog()
+        result = await self._update_one(
+            key,
+            enabled=enabled,
+            visible=visible,
+            maintenance_message=maintenance_message,
+            description=description,
+        )
+        # Keep offers / home_offers in sync so nav + homepage stay consistent
+        if key in ("offers", "home_offers") and (
+            enabled is not None or visible is not None
+        ):
+            twin = "home_offers" if key == "offers" else "offers"
+            try:
+                await self._update_one(
+                    twin,
+                    enabled=enabled if enabled is not None else None,
+                    visible=visible if visible is not None else None,
+                    maintenance_message=maintenance_message,
+                )
+            except ValueError:
+                pass
+        return result
+
+    async def _update_one(
+        self,
+        key: str,
+        *,
+        enabled: Optional[bool] = None,
+        visible: Optional[bool] = None,
+        maintenance_message: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> dict[str, Any]:
         flag = (
             await self.db.execute(select(FeatureFlag).where(FeatureFlag.key == key))
         ).scalar_one_or_none()
@@ -175,15 +209,29 @@ class FeatureService:
         meta = self._parse_meta(flag)
         if enabled is not None:
             flag.enabled = enabled
+            # Disabling also hides in UI by default
+            if enabled is False and visible is None:
+                visible = False
         vis = meta["visible"] if visible is None else visible
-        msg = meta["maintenance_message"] if maintenance_message is None else maintenance_message
+        msg = (
+            meta["maintenance_message"]
+            if maintenance_message is None
+            else maintenance_message
+        )
         base_desc = description if description is not None else meta["description"]
-        parts = [base_desc]
+        # Strip previous markers then re-apply
+        clean = (
+            (base_desc or "")
+            .replace("|visible=0", "")
+            .split("|msg=")[0]
+            .strip()
+        )
+        parts = [clean]
         if not vis:
             parts.append("|visible=0")
         if msg:
             parts.append(f"|msg={msg}")
-        flag.description = " ".join(parts).strip()
+        flag.description = " ".join(p for p in parts if p).strip()
         flag.rollout_percent = 100 if vis else 0
         await self.db.flush()
         return self._parse_meta(flag)

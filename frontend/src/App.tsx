@@ -19,9 +19,10 @@ const MenuItemPage = lazy(() => import('@/pages/MenuItemPage'));
 const CartPage = lazy(() => import('@/pages/CartPage'));
 const CheckoutPage = lazy(() => import('@/pages/CheckoutPage'));
 const ReservationPage = lazy(() => import('@/pages/ReservationPage'));
-const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
-const SignupPage = lazy(() => import('@/pages/auth/SignupPage'));
-const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'));
+// Auth pages are eager so Sign-in never hangs on a failed lazy chunk
+import LoginPage from '@/pages/auth/LoginPage';
+import SignupPage from '@/pages/auth/SignupPage';
+import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 
 function Bootstrap() {
   const fetchMe = useAuthStore((s) => s.fetchMe);
@@ -31,10 +32,9 @@ function Bootstrap() {
 
   useEffect(() => {
     setDarkMode(darkMode);
-    // Non-blocking bootstrap — never freeze UI
-    void fetchMe();
-    void loadFeatures();
-    // Prefetch homepage payload while shell paints
+    // Non-blocking — must not freeze login or public pages
+    void fetchMe().catch(() => undefined);
+    void loadFeatures().catch(() => undefined);
     void queryClient.prefetchQuery({
       queryKey: ['home'],
       queryFn: publicApi.home,
@@ -113,19 +113,20 @@ function LazyDeveloper({ name }: { name: keyof typeof import('@/pages/admin/Deve
   );
 }
 
-/** Brief branded boot so cold start never shows pure white */
+/**
+ * Brief branded overlay only — children always mounted & interactive.
+ * Never keep the UI at opacity-0 (that felt like infinite loading).
+ */
 function AppShell({ children }: { children: React.ReactNode }) {
-  const [booting, setBooting] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
   useEffect(() => {
-    const t = window.setTimeout(() => setBooting(false), 600);
+    const t = window.setTimeout(() => setShowSplash(false), 700);
     return () => window.clearTimeout(t);
   }, []);
   return (
     <>
-      {booting && <BrandedBootScreen />}
-      <div className={booting ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}>
-        {children}
-      </div>
+      {showSplash && <BrandedBootScreen />}
+      <div className="min-h-screen">{children}</div>
     </>
   );
 }
@@ -147,14 +148,21 @@ export default function App() {
                     </S>
                   }
                 />
-                <Route path="menu" element={<S><MenuPage /></S>} />
+                <Route
+                  path="menu"
+                  element={
+                    <S>
+                      <MenuPage />
+                    </S>
+                  }
+                />
                 <Route path="menu/:slug" element={<S><MenuItemPage /></S>} />
                 <Route path="cart" element={<S><CartPage /></S>} />
                 <Route path="checkout" element={<S><CheckoutPage /></S>} />
                 <Route path="reservation" element={<S><ReservationPage /></S>} />
-                <Route path="login" element={<S><LoginPage /></S>} />
-                <Route path="signup" element={<S><SignupPage /></S>} />
-                <Route path="forgot-password" element={<S><ForgotPasswordPage /></S>} />
+                <Route path="login" element={<LoginPage />} />
+                <Route path="signup" element={<SignupPage />} />
+                <Route path="forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="about" element={<LazyStatic name="AboutPage" />} />
                 <Route path="our-story" element={<LazyStatic name="OurStoryPage" />} />
                 <Route path="rail-special-thali" element={<LazyStatic name="RailThaliPage" />} />

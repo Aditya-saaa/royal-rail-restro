@@ -9,10 +9,10 @@ import { cn } from '@/lib/utils';
 
 const allNavLinks = [
   { to: '/', label: 'Home', feature: null as string | null },
-  { to: '/menu', label: 'Menu', feature: null },
+  { to: '/menu', label: 'Menu', feature: 'menu' },
   { to: '/rail-special-thali', label: 'Rail Thali', feature: 'home_rail_specials' },
   { to: '/reservation', label: 'Reserve', feature: 'table_reservation' },
-  { to: '/offers', label: 'Offers', feature: 'offers' }, // same key as Feature Manager "offers" / home_offers
+  { to: '/offers', label: 'Offers', feature: 'offers' },
   { to: '/gallery', label: 'Gallery', feature: 'gallery' },
   { to: '/blog', label: 'Blog', feature: 'blog' },
   { to: '/events', label: 'Events', feature: 'events' },
@@ -34,10 +34,6 @@ export function Navbar() {
 
   const navLinks = allNavLinks.filter((l) => {
     if (!l.feature) return true;
-    // Offers: hide only if BOTH offers and home_offers are off
-    if (l.feature === 'offers') {
-      return isVisible('offers') || isVisible('home_offers');
-    }
     return isVisible(l.feature);
   });
 

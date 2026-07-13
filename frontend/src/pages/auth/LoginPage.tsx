@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -19,32 +19,54 @@ type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
+  const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/account';
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { remember_me: true },
   });
 
+  useEffect(() => {
+    if (!user) return;
+    const dest =
+      user.is_superuser || user.roles.some((r) => r.name === 'admin' || r.name === 'manager')
+        ? '/admin'
+        : from;
+    navigate(dest, { replace: true });
+  }, [user, from, navigate]);
+
   const onSubmit = async (data: FormData) => {
     setError('');
+    setSubmitting(true);
     try {
-      await login(data.email, data.password, data.remember_me);
-      const user = useAuthStore.getState().user;
-      if (user && (user.is_superuser || user.roles.some((r) => r.name === 'admin'))) {
+      await Promise.race([
+        login(data.email, data.password, data.remember_me),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(
+            () => reject(new Error('Sign-in timed out. Server may be waking up — try again.')),
+            20000
+          )
+        ),
+      ]);
+      const u = useAuthStore.getState().user;
+      if (u && (u.is_superuser || u.roles.some((r) => r.name === 'admin' || r.name === 'manager'))) {
         navigate('/admin');
       } else {
         navigate(from);
       }
     } catch (err) {
       setError(getErrorMessage(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -69,7 +91,7 @@ export default function LoginPage() {
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full" loading={isSubmitting}>
+            <Button type="submit" className="w-full" loading={submitting} disabled={submitting}>
               Sign in
             </Button>
           </form>

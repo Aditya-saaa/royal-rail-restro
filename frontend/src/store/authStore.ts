@@ -7,7 +7,10 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
+  /** True only during login/signup form submit — NOT during background session restore */
   isLoading: boolean;
+  /** True while restoring session from token (must always clear) */
+  isBootstrapping: boolean;
   setTokens: (access: string, refresh: string) => void;
   setUser: (user: User | null) => void;
   login: (email: string, password: string, remember?: boolean) => Promise<void>;
@@ -25,6 +28,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isLoading: false,
+      isBootstrapping: false,
 
       setTokens: (access, refresh) => {
         localStorage.setItem('rrr_access_token', access);
@@ -37,12 +41,16 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password, remember = false) => {
         set({ isLoading: true });
         try {
-          const tokens = await authApi.login({ email, password, remember_me: remember });
+          const tokens = await authApi.login({
+            email,
+            password,
+            remember_me: remember,
+          });
           get().setTokens(tokens.access_token, tokens.refresh_token);
           const user = await authApi.me();
           set({ user, isLoading: false });
         } catch (e) {
-          set({ isLoading: false });
+          set({ isLoading: false, user: null });
           throw e;
         }
       },
@@ -55,21 +63,57 @@ export const useAuthStore = create<AuthState>()(
         }
         localStorage.removeItem('rrr_access_token');
         localStorage.removeItem('rrr_refresh_token');
-        set({ user: null, accessToken: null, refreshToken: null });
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          isLoading: false,
+          isBootstrapping: false,
+        });
       },
 
+      /**
+       * Restore session. Must NEVER leave isBootstrapping true.
+       * Uses a hard timeout so a cold/hung API cannot freeze the app.
+       */
       fetchMe: async () => {
         const token = localStorage.getItem('rrr_access_token');
         if (!token) {
-          set({ user: null });
+          set({
+            user: null,
+            accessToken: null,
+            isBootstrapping: false,
+            isLoading: false,
+          });
           return;
         }
-        set({ isLoading: true });
+
+        set({ isBootstrapping: true });
+
+        const clearBoot = (extra: Partial<AuthState> = {}) => {
+          set({ isBootstrapping: false, isLoading: false, ...extra });
+        };
+
         try {
-          const user = await authApi.me();
-          set({ user, accessToken: token, isLoading: false });
+          const user = await Promise.race([
+            authApi.me(),
+            new Promise<never>((_, reject) =>
+              window.setTimeout(
+                () => reject(new Error('Session restore timed out')),
+                12000
+              )
+            ),
+          ]);
+          clearBoot({ user, accessToken: token });
         } catch {
-          set({ user: null, isLoading: false });
+          // Invalid/expired token or network — clear session, never hang
+          localStorage.removeItem('rrr_access_token');
+          localStorage.removeItem('rrr_refresh_token');
+          clearBoot({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+          });
         }
       },
 
@@ -84,13 +128,14 @@ export const useAuthStore = create<AuthState>()(
         const u = get().user;
         if (!u) return false;
         if (u.is_superuser) return true;
-        return u.roles.some((r) => ['admin', 'manager', 'staff'].includes(r.name));
+        return u.roles.some((r) =>
+          ['admin', 'manager', 'staff'].includes(r.name)
+        );
       },
 
       isDeveloper: () => {
         const u = get().user;
         if (!u) return false;
-        // Superusers and admins can open developer console in production
         if (u.is_superuser) return true;
         return u.roles.some((r) =>
           ['admin', 'developer', 'manager'].includes(r.name)
@@ -104,6 +149,13 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: s.refreshToken,
         user: s.user,
       }),
+      // Never rehydrate isLoading/isBootstrapping as true
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isLoading = false;
+          state.isBootstrapping = false;
+        }
+      },
     }
   )
 );

@@ -21,6 +21,7 @@ interface FeatureStore {
 }
 
 const DEFAULTS: Record<string, FeatureState> = {
+  menu: { enabled: true, visible: true },
   online_ordering: { enabled: true, visible: true },
   table_reservation: { enabled: true, visible: true },
   delivery: { enabled: true, visible: true },

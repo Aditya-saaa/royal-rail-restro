@@ -7,6 +7,8 @@ import { MenuCard } from '@/components/menu/MenuCard';
 import { SkeletonCard } from '@/components/ui/Spinner';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
+import { FeatureGate } from '@/components/common/FeatureGate';
+import { QueryState } from '@/components/common/QueryState';
 
 export default function MenuPage() {
   const [params, setParams] = useSearchParams();
@@ -30,11 +32,15 @@ export default function MenuPage() {
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: () => menuApi.categories(),
+    staleTime: 120_000,
+    retry: 3,
   });
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['menu-items', queryParams],
     queryFn: () => menuApi.items(queryParams),
+    staleTime: 60_000,
+    retry: 3,
   });
 
   const setFilter = (key: string, value: string) => {
@@ -45,7 +51,7 @@ export default function MenuPage() {
   };
 
   return (
-    <>
+    <FeatureGate featureKey="menu" title="Menu is currently unavailable">
       <Seo
         title="Menu"
         description="Browse Royal Rail Restro menu — North Indian, Chinese, Tandoor, Pizza, Burgers, Momos, Biryani & desserts in Gaya."
@@ -126,28 +132,32 @@ export default function MenuPage() {
           ))}
         </div>
 
-        {isLoading ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </div>
-        ) : (
-          <>
-            <p className="mb-4 text-sm text-charcoal-500" aria-live="polite">
-              {data?.meta.total ?? 0} dishes {isFetching ? '· updating…' : ''}
-            </p>
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data?.items?.length)}
+          emptyTitle="No dishes match your filters"
+          emptyDescription="Try another category or clear search."
+          onRetry={() => refetch()}
+          skeleton={
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {data?.items.map((item) => (
-                <MenuCard key={item.id} item={item} />
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} />
               ))}
             </div>
-            {!data?.items.length && (
-              <p className="py-16 text-center text-charcoal-500">No dishes match your filters.</p>
-            )}
-          </>
-        )}
+          }
+        >
+          <p className="mb-4 text-sm text-charcoal-500" aria-live="polite">
+            {data?.meta.total ?? 0} dishes {isFetching ? '· updating…' : ''}
+          </p>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {data?.items.map((item) => (
+              <MenuCard key={item.id} item={item} />
+            ))}
+          </div>
+        </QueryState>
       </div>
-    </>
+    </FeatureGate>
   );
 }

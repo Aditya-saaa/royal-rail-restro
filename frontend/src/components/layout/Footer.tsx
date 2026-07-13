@@ -4,7 +4,7 @@ import { useFeatureStore } from '@/store/featureStore';
 
 const footerLinks = {
   Explore: [
-    { to: '/menu', label: 'Full Menu', feature: null as string | null },
+    { to: '/menu', label: 'Full Menu', feature: 'menu' },
     { to: '/rail-special-thali', label: 'Rail Special Thali', feature: 'home_rail_specials' },
     { to: '/chef-specials', label: 'Chef Specials', feature: 'home_chef_specials' },
     { to: '/offers', label: 'Offers', feature: 'offers' },
