@@ -352,7 +352,6 @@ export function BlogPage() {
           </div>
         )}
       </div>
-    </>
     </FeatureGate>
   );
 }
@@ -483,7 +482,6 @@ function PolicyLayout({ title, path, children }: { title: string; path: string; 
         <div className="mt-6 space-y-4 text-sm leading-relaxed text-charcoal-600 dark:text-charcoal-300">{children}</div>
       </div>
     </>
-    </FeatureGate>
   );
 }
 
