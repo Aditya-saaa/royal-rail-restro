@@ -469,7 +469,7 @@ export function ContactPage() {
           </div>
         </div>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
