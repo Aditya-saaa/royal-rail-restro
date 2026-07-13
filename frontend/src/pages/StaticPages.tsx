@@ -352,7 +352,6 @@ export function BlogPage() {
           </div>
         )}
       </div>
-    </>
     </FeatureGate>
   );
 }
@@ -470,7 +469,6 @@ export function ContactPage() {
           </div>
         </div>
       </div>
-    </>
   );
 }
 
