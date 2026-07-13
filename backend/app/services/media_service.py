@@ -87,29 +87,33 @@ class MediaService:
         resource_type = "image"
 
         if self._cloudinary_ready():
-            self._configure_cloudinary()
-            import cloudinary.uploader
+            try:
+                self._configure_cloudinary()
+                import cloudinary.uploader
 
-            result = cloudinary.uploader.upload(
-                io.BytesIO(file_bytes),
-                public_id=public_id,
-                folder=folder,
-                resource_type="auto",
-                overwrite=False,
-                transformation=[
-                    {"quality": "auto", "fetch_format": "auto"},
-                ],
-            )
-            url = result.get("url") or result.get("secure_url") or ""
-            secure_url = result.get("secure_url") or url
-            width = result.get("width")
-            height = result.get("height")
-            fmt = result.get("format") or fmt
-            bytes_len = result.get("bytes") or bytes_len
-            public_id = result.get("public_id") or public_id
-            resource_type = result.get("resource_type") or "image"
+                result = cloudinary.uploader.upload(
+                    file_bytes,
+                    public_id=public_id,
+                    folder=folder,
+                    resource_type="image",
+                    overwrite=False,
+                )
+                url = result.get("url") or result.get("secure_url") or ""
+                secure_url = result.get("secure_url") or url
+                width = result.get("width")
+                height = result.get("height")
+                fmt = result.get("format") or fmt
+                bytes_len = result.get("bytes") or bytes_len
+                public_id = result.get("public_id") or public_id
+                resource_type = result.get("resource_type") or "image"
+            except Exception as exc:
+                # Fall through to placeholder rather than failing admin completely
+                print(f"[cloudinary] upload failed: {exc}")
+                safe = filename.replace(" ", "-")[:40]
+                url = f"https://placehold.co/800x600/8B0000/D4AF37?text={safe}"
+                secure_url = url
         else:
-            # Dev fallback: data URI not stored; use placeholder with name
+            # Dev / missing credentials: still return a usable image URL
             safe = filename.replace(" ", "-")[:40]
             url = f"https://placehold.co/800x600/8B0000/D4AF37?text={safe}"
             secure_url = url

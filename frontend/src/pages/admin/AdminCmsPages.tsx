@@ -743,8 +743,21 @@ export function AdminFeatureManager() {
   }, [data, filter]);
 
   const toggle = async (row: FeatureRow, field: 'enabled' | 'visible') => {
-    await featureApi.update(row.key, { [field]: !row[field] });
-    setMsg(`Updated ${row.key}`);
+    const next = !row[field];
+    await featureApi.update(row.key, { [field]: next });
+    // Live-update public site feature store without full reload
+    try {
+      const { useFeatureStore } = await import('@/store/featureStore');
+      useFeatureStore.getState().setLocal(row.key, { [field]: next } as { enabled?: boolean; visible?: boolean });
+      // If disabling, also hide; if hiding, keep enabled state
+      if (field === 'enabled' && !next) {
+        useFeatureStore.getState().setLocal(row.key, { enabled: false, visible: false });
+      }
+      void useFeatureStore.getState().reload();
+    } catch {
+      /* ignore */
+    }
+    setMsg(`Updated ${row.key} → ${field}=${next}. Public site will hide/show this module.`);
     refetch();
   };
 

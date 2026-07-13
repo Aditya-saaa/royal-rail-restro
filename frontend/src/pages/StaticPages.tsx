@@ -1,37 +1,52 @@
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { contentApi, menuApi, publicApi } from '@/api/services';
+import { useForm } from 'react-hook-form';
+import { contentApi, menuApi, publicApi, orderApi, reservationApi } from '@/api/services';
 import { Seo } from '@/seo/Seo';
 import { MenuCard } from '@/components/menu/MenuCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { PageLoader } from '@/components/ui/Spinner';
-import { useEffect, useState, type ReactNode } from 'react';
+import { PageLoader, SkeletonCard } from '@/components/ui/Spinner';
 import { getErrorMessage } from '@/api/client';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { useForm } from 'react-hook-form';
 import { useAuthStore } from '@/store/authStore';
-import { orderApi, reservationApi } from '@/api/services';
+import { FeatureGate } from '@/components/common/FeatureGate';
+import { QueryState } from '@/components/common/QueryState';
 
 export function AboutPage() {
+  const { data: cms, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['cms-public'],
+    queryFn: publicApi.cms,
+    staleTime: 120_000,
+    retry: 2,
+  });
+  const settings = (cms as { settings?: Record<string, string> } | undefined)?.settings || {};
+  const about =
+    settings.about_html ||
+    'Located on the 1st Floor of Dev Raj Tower, Gewalbigha, Royal Rail Restro brings the romance of classic railway dining into a modern family restaurant. Our kitchen serves North Indian favourites, Chinese classics, tandoor specials, pizzas, burgers, momos, biryanis, and our signature Rail Special Thali.\n\nWe believe great food should feel first-class without the first-class price. Whether you are celebrating a birthday, hosting relatives, or craving a weekday thali — you are always welcome aboard.';
+  const tagline =
+    settings.restaurant_tagline || 'Premium yet affordable family dining in the heart of Gaya';
+
   return (
     <>
       <Seo title="About Us" path="/about" description="About Royal Rail Restro — premium family restaurant in Gewalbigha, Gaya, Bihar." />
       <div className="container-rrr py-12">
         <h1 className="section-title">About Royal Rail Restro</h1>
-        <p className="section-subtitle mb-8">Premium yet affordable family dining in the heart of Gaya</p>
-        <div className="prose prose-lg max-w-3xl dark:prose-invert">
-          <p>
-            Located on the 1st Floor of Dev Raj Tower, Gewalbigha, Royal Rail Restro brings the romance of
-            classic railway dining into a modern family restaurant. Our kitchen serves North Indian
-            favourites, Chinese classics, tandoor specials, pizzas, burgers, momos, biryanis, and our
-            signature Rail Special Thali.
-          </p>
-          <p>
-            We believe great food should feel first-class without the first-class price. Whether you are
-            celebrating a birthday, hosting relatives, or craving a weekday thali — you are always welcome aboard.
-          </p>
-        </div>
+        <p className="section-subtitle mb-8">{tagline}</p>
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          onRetry={() => refetch()}
+          skeleton={<div className="space-y-3"><div className="skeleton h-4 w-full" /><div className="skeleton h-4 w-5/6" /><div className="skeleton h-4 w-2/3" /></div>}
+        >
+          <div className="prose prose-lg max-w-3xl whitespace-pre-wrap dark:prose-invert">
+            {about.split('\n\n').map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
+        </QueryState>
         <div className="mt-10 grid gap-4 sm:grid-cols-3">
           {['Family Restaurant', 'Table Reservation', 'Online Ordering'].map((f) => (
             <div key={f} className="card text-center font-semibold text-royal-700 dark:text-gold-400">
@@ -71,12 +86,14 @@ export function OurStoryPage() {
 }
 
 export function RailThaliPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['rail-specials'],
     queryFn: menuApi.railSpecials,
+    staleTime: 120_000,
+    retry: 3,
   });
   return (
-    <>
+    <FeatureGate featureKey="home_rail_specials" title="Rail Special Thali is unavailable">
       <Seo title="Rail Special Thali" path="/rail-special-thali" description="Signature Rail Special Thali at Royal Rail Restro, Gaya — veg & non-veg multi-course platters." />
       <div className="bg-royal-gradient py-14 text-white">
         <div className="container-rrr">
@@ -87,64 +104,109 @@ export function RailThaliPage() {
         </div>
       </div>
       <div className="container-rrr py-12">
-        {isLoading ? (
-          <PageLoader />
-        ) : (
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data && data.length)}
+          emptyTitle="No thali specials listed yet"
+          emptyDescription="Our kitchen is updating the Rail Special menu. Browse the full menu in the meantime."
+          onRetry={() => refetch()}
+        >
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {data?.map((item) => (
               <MenuCard key={item.id} item={item} />
             ))}
           </div>
-        )}
+        </QueryState>
+        <div className="mt-8 text-center">
+          <Link to="/menu">
+            <Button variant="outline">Browse full menu</Button>
+          </Link>
+        </div>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
 export function ChefSpecialsPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['chef-specials'],
     queryFn: menuApi.chefSpecials,
+    staleTime: 120_000,
+    retry: 3,
   });
   return (
-    <>
+    <FeatureGate featureKey="home_chef_specials" title="Chef Specials are unavailable">
       <Seo title="Chef Specials" path="/chef-specials" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Chef Specials</h1>
         <p className="section-subtitle mb-8">Signature creations from our kitchen</p>
-        {isLoading ? <PageLoader /> : (
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data && data.length)}
+          emptyTitle="No chef specials right now"
+          emptyDescription="Explore the full menu for daily favourites."
+          onRetry={() => refetch()}
+        >
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {data?.map((item) => <MenuCard key={item.id} item={item} />)}
+            {data?.map((item) => (
+              <MenuCard key={item.id} item={item} />
+            ))}
           </div>
-        )}
+        </QueryState>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
 export function GalleryPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['gallery'],
     queryFn: () => contentApi.gallery(),
+    staleTime: 120_000,
+    retry: 3,
   });
   return (
-    <>
+    <FeatureGate featureKey="gallery" title="Gallery is currently unavailable">
       <Seo title="Gallery" path="/gallery" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Gallery</h1>
         <p className="section-subtitle mb-8">Food, interiors & celebrations</p>
-        {isLoading ? <PageLoader /> : (
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data && data.length)}
+          emptyTitle="No gallery images yet"
+          emptyDescription="Our media team is preparing photos. Visit us in Gewalbigha!"
+          onRetry={() => refetch()}
+          skeleton={
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="skeleton aspect-square w-full rounded-2xl" />
+              ))}
+            </div>
+          }
+        >
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
             {data?.map((g) => (
               <figure key={g.id} className="group overflow-hidden rounded-2xl">
-                <img src={g.image_url} alt={g.alt_text || g.title} loading="lazy" className="aspect-square w-full object-cover transition group-hover:scale-105" />
+                <img
+                  src={g.image_url}
+                  alt={g.alt_text || g.title}
+                  loading="lazy"
+                  className="aspect-square w-full object-cover transition group-hover:scale-105"
+                />
                 <figcaption className="sr-only">{g.title}</figcaption>
               </figure>
             ))}
           </div>
-        )}
+        </QueryState>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
@@ -181,17 +243,31 @@ export function ReviewsPage() {
 }
 
 export function OffersPage() {
-  const { data, isLoading } = useQuery({ queryKey: ['offers'], queryFn: contentApi.offers });
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['offers'],
+    queryFn: contentApi.offers,
+    staleTime: 60_000,
+    retry: 3,
+  });
   return (
-    <>
+    <FeatureGate featureKey="offers" title="Offers are currently unavailable">
       <Seo title="Offers" path="/offers" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Offers & Coupons</h1>
-        {isLoading ? <PageLoader /> : (
-          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <p className="section-subtitle mb-8">Save more on your favourite meals</p>
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data && data.length)}
+          emptyTitle="No active offers"
+          emptyDescription="New deals are on the way. Follow us or check back soon."
+          onRetry={() => refetch()}
+        >
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {data?.map((o) => (
               <article key={o.id} className="card">
-                <span className="badge bg-gold-400 text-charcoal-900">{o.discount_label}</span>
+                <span className="badge bg-gold-400 text-charcoal-900">{o.discount_label || 'Offer'}</span>
                 <h2 className="mt-3 font-display text-xl font-semibold">{o.title}</h2>
                 <p className="mt-2 text-sm text-charcoal-500">{o.description}</p>
                 {o.coupon_code && (
@@ -202,43 +278,65 @@ export function OffersPage() {
               </article>
             ))}
           </div>
-        )}
+        </QueryState>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
 export function EventsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ['events'], queryFn: contentApi.events });
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['events'],
+    queryFn: contentApi.events,
+    staleTime: 60_000,
+    retry: 3,
+  });
   return (
-    <>
+    <FeatureGate featureKey="events" title="Events are currently unavailable">
       <Seo title="Events" path="/events" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Upcoming Events</h1>
-        {isLoading ? <PageLoader /> : (
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !(data && data.length)}
+          emptyTitle="No upcoming events"
+          emptyDescription="Check back soon for live music dinners and celebrations."
+          onRetry={() => refetch()}
+        >
           <div className="mt-8 space-y-4">
             {data?.map((e) => (
-              <article key={e.id} className="card flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <article
+                key={e.id}
+                className="card flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div>
                   <h2 className="font-display text-xl font-semibold">{e.title}</h2>
                   <p className="text-sm text-charcoal-500">{e.description}</p>
-                  <p className="mt-1 text-sm text-royal-700">{formatDate(e.event_date)} · {e.start_time} – {e.end_time}</p>
+                  <p className="mt-1 text-sm text-royal-700">
+                    {formatDate(e.event_date)} · {e.start_time} – {e.end_time}
+                  </p>
                 </div>
                 <p className="text-sm text-charcoal-400">{e.location}</p>
               </article>
             ))}
-            {!data?.length && <p className="text-charcoal-500">No upcoming events. Check back soon.</p>}
           </div>
-        )}
+        </QueryState>
       </div>
-    </>
+    </FeatureGate>
   );
 }
 
 export function BlogPage() {
-  const { data, isLoading } = useQuery({ queryKey: ['blog'], queryFn: () => contentApi.blog() });
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['blog'],
+    queryFn: () => contentApi.blog(),
+    staleTime: 60_000,
+    retry: 3,
+  });
   return (
-    <>
+    <FeatureGate featureKey="blog" title="Blog is currently unavailable">
       <Seo title="Blog" path="/blog" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Blog</h1>
@@ -255,6 +353,7 @@ export function BlogPage() {
         )}
       </div>
     </>
+    </FeatureGate>
   );
 }
 
@@ -315,6 +414,7 @@ export function FaqsPage() {
 }
 
 export function ContactPage() {
+  // contact_form feature gate applied in return
   const { register, handleSubmit, reset } = useForm();
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -336,7 +436,7 @@ export function ContactPage() {
   };
 
   return (
-    <>
+    <FeatureGate featureKey="contact_form" title="Contact form is currently unavailable">
       <Seo title="Contact" path="/contact" />
       <div className="container-rrr py-12">
         <h1 className="section-title">Contact Us</h1>
@@ -383,6 +483,7 @@ function PolicyLayout({ title, path, children }: { title: string; path: string; 
         <div className="mt-6 space-y-4 text-sm leading-relaxed text-charcoal-600 dark:text-charcoal-300">{children}</div>
       </div>
     </>
+    </FeatureGate>
   );
 }
 

@@ -1,18 +1,12 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from 'axios';
 
 /**
  * Normalize API base URL for local + production.
- * Accepts:
- *  - https://host.onrender.com
- *  - https://host.onrender.com/
- *  - https://host.onrender.com/api/v1
- *  - /api/v1
  */
 function resolveApiBase(): string {
   const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
   if (!raw) return '/api/v1';
 
-  // Relative path
   if (raw.startsWith('/')) {
     return raw.replace(/\/+$/, '') || '/api/v1';
   }
@@ -35,20 +29,36 @@ export const API_BASE = resolveApiBase();
 
 export const api = axios.create({
   baseURL: API_BASE,
-  // Cross-origin Vercel → Render: cookies need explicit CORS origin allowlist.
-  // Bearer tokens are in localStorage, so credentials are not required for API calls.
   withCredentials: false,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 30000,
+  // Do NOT set global Content-Type — breaks FormData multipart boundary.
+  // JSON is set per-request when body is a plain object.
+  timeout: 45000, // Render cold start
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('rrr_access_token');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const headers = AxiosHeaders.from(config.headers || {});
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
+
+  // Multipart: strip Content-Type so browser sets boundary
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    headers.delete('Content-Type');
+  } else if (
+    config.data &&
+    typeof config.data === 'object' &&
+    !(config.data instanceof FormData) &&
+    !(config.data instanceof Blob) &&
+    !(config.data instanceof ArrayBuffer)
+  ) {
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+  }
+
+  config.headers = headers;
   return config;
 });
 
@@ -81,7 +91,9 @@ api.interceptors.response.use(
       const token = await refreshing;
       refreshing = null;
       if (token) {
-        original.headers.Authorization = `Bearer ${token}`;
+        const headers = AxiosHeaders.from(original.headers || {});
+        headers.set('Authorization', `Bearer ${token}`);
+        original.headers = headers;
         return api(original);
       }
     }
@@ -95,6 +107,9 @@ export function getErrorMessage(err: unknown): string {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail)) {
       return detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ');
+    }
+    if (err.code === 'ECONNABORTED') {
+      return 'Request timed out. The server may be waking up — please retry.';
     }
     if (err.code === 'ERR_NETWORK') {
       return 'Cannot reach API. Check VITE_API_URL and CORS settings.';

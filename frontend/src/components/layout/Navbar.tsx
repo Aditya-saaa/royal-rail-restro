@@ -8,11 +8,11 @@ import { useFeatureStore } from '@/store/featureStore';
 import { cn } from '@/lib/utils';
 
 const allNavLinks = [
-  { to: '/', label: 'Home', feature: null },
+  { to: '/', label: 'Home', feature: null as string | null },
   { to: '/menu', label: 'Menu', feature: null },
   { to: '/rail-special-thali', label: 'Rail Thali', feature: 'home_rail_specials' },
   { to: '/reservation', label: 'Reserve', feature: 'table_reservation' },
-  { to: '/offers', label: 'Offers', feature: 'home_offers' },
+  { to: '/offers', label: 'Offers', feature: 'offers' }, // same key as Feature Manager "offers" / home_offers
   { to: '/gallery', label: 'Gallery', feature: 'gallery' },
   { to: '/blog', label: 'Blog', feature: 'blog' },
   { to: '/events', label: 'Events', feature: 'events' },
@@ -32,7 +32,14 @@ export function Navbar() {
   const darkModeOn = useFeatureStore((s) => s.isVisible('dark_mode'));
   const searchOn = useFeatureStore((s) => s.isVisible('search'));
 
-  const navLinks = allNavLinks.filter((l) => !l.feature || isVisible(l.feature));
+  const navLinks = allNavLinks.filter((l) => {
+    if (!l.feature) return true;
+    // Offers: hide only if BOTH offers and home_offers are off
+    if (l.feature === 'offers') {
+      return isVisible('offers') || isVisible('home_offers');
+    }
+    return isVisible(l.feature);
+  });
 
   return (
     <header className="sticky top-0 z-50 border-b border-charcoal-100/80 bg-white/85 backdrop-blur-xl dark:border-charcoal-700 dark:bg-charcoal-900/85">

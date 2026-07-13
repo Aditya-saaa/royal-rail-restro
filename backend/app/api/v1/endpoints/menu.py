@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import AdminUser, DbSession
 from app.schemas.common import MessageResponse, PaginatedResponse
@@ -119,12 +119,26 @@ async def featured_items(db: DbSession, limit: int = Query(8, ge=1, le=24)):
 
 @router.get("/items/chef-specials", response_model=List[MenuItemOut])
 async def chef_specials(db: DbSession, limit: int = Query(8, ge=1, le=24)):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("home_chef_specials"):
+        raise HTTPException(
+            status_code=503,
+            detail="Chef Specials are currently unavailable.",
+        )
     service = MenuService(db)
     return await service.chef_specials(limit)
 
 
 @router.get("/items/rail-specials", response_model=List[MenuItemOut])
 async def rail_specials(db: DbSession, limit: int = Query(12, ge=1, le=24)):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("home_rail_specials"):
+        raise HTTPException(
+            status_code=503,
+            detail="Rail Special Thali is currently unavailable.",
+        )
     service = MenuService(db)
     return await service.rail_specials(limit)
 

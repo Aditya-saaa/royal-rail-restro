@@ -135,6 +135,13 @@ async def list_gallery(
     category: Optional[str] = None,
     featured_only: bool = False,
 ):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("gallery"):
+        raise HTTPException(
+            status_code=503,
+            detail="Gallery is currently unavailable.",
+        )
     service = ContentService(db)
     return await service.list_gallery(category=category, featured_only=featured_only)
 
@@ -196,6 +203,10 @@ async def list_blogs(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
 ):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("blog"):
+        raise HTTPException(status_code=503, detail="Blog is currently unavailable.")
     service = ContentService(db)
     items, total = await service.list_blogs(page=page, page_size=page_size)
     return paginate(items, total, page, page_size)
@@ -263,6 +274,10 @@ async def delete_blog(post_id: str, db: DbSession, _: AdminUser):
 # ---- Events ----
 @router.get("/events", response_model=List[EventOut])
 async def list_events(db: DbSession, upcoming_only: bool = True):
+    from app.services.feature_service import FeatureService
+
+    if not await FeatureService(db).is_enabled("events"):
+        raise HTTPException(status_code=503, detail="Events are currently unavailable.")
     service = ContentService(db)
     return await service.list_events(upcoming_only=upcoming_only)
 
@@ -315,6 +330,12 @@ async def delete_event(event_id: str, db: DbSession, _: AdminUser):
 # ---- Offers ----
 @router.get("/offers", response_model=List[OfferOut])
 async def list_offers(db: DbSession):
+    from app.services.feature_service import FeatureService
+
+    fs = FeatureService(db)
+    # Accept either offers or home_offers module keys
+    if not await fs.is_enabled("offers") and not await fs.is_enabled("home_offers"):
+        raise HTTPException(status_code=503, detail="Offers are currently unavailable.")
     service = ContentService(db)
     return await service.list_offers()
 

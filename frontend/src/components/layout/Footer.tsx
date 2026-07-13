@@ -1,32 +1,35 @@
 import { Link } from 'react-router-dom';
 import { FiMapPin, FiPhone, FiMail, FiInstagram, FiFacebook } from 'react-icons/fi';
+import { useFeatureStore } from '@/store/featureStore';
 
 const footerLinks = {
   Explore: [
-    { to: '/menu', label: 'Full Menu' },
-    { to: '/rail-special-thali', label: 'Rail Special Thali' },
-    { to: '/chef-specials', label: 'Chef Specials' },
-    { to: '/offers', label: 'Offers' },
-    { to: '/events', label: 'Events' },
+    { to: '/menu', label: 'Full Menu', feature: null as string | null },
+    { to: '/rail-special-thali', label: 'Rail Special Thali', feature: 'home_rail_specials' },
+    { to: '/chef-specials', label: 'Chef Specials', feature: 'home_chef_specials' },
+    { to: '/offers', label: 'Offers', feature: 'offers' },
+    { to: '/events', label: 'Events', feature: 'events' },
   ],
   Company: [
-    { to: '/about', label: 'About Us' },
-    { to: '/our-story', label: 'Our Story' },
-    { to: '/gallery', label: 'Gallery' },
-    { to: '/blog', label: 'Blog' },
-    { to: '/reviews', label: 'Reviews' },
+    { to: '/about', label: 'About Us', feature: null },
+    { to: '/our-story', label: 'Our Story', feature: 'home_story' },
+    { to: '/gallery', label: 'Gallery', feature: 'gallery' },
+    { to: '/blog', label: 'Blog', feature: 'blog' },
+    { to: '/reviews', label: 'Reviews', feature: 'reviews' },
   ],
   Support: [
-    { to: '/reservation', label: 'Book a Table' },
-    { to: '/contact', label: 'Contact' },
-    { to: '/faqs', label: 'FAQs' },
-    { to: '/privacy', label: 'Privacy Policy' },
-    { to: '/terms', label: 'Terms of Service' },
-    { to: '/refund', label: 'Refund Policy' },
+    { to: '/reservation', label: 'Book a Table', feature: 'table_reservation' },
+    { to: '/contact', label: 'Contact', feature: 'contact_form' },
+    { to: '/faqs', label: 'FAQs', feature: null },
+    { to: '/privacy', label: 'Privacy Policy', feature: null },
+    { to: '/terms', label: 'Terms of Service', feature: null },
+    { to: '/refund', label: 'Refund Policy', feature: null },
   ],
 };
 
 export function Footer() {
+  const isVisible = useFeatureStore((s) => s.isVisible);
+
   return (
     <footer className="border-t border-charcoal-100 bg-charcoal-900 text-cream-100 dark:border-charcoal-700">
       <div className="container-rrr py-14">
@@ -81,22 +84,26 @@ export function Footer() {
             </div>
           </div>
 
-          {Object.entries(footerLinks).map(([title, links]) => (
-            <div key={title}>
-              <h3 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-gold-400">
-                {title}
-              </h3>
-              <ul className="space-y-2.5">
-                {links.map((l) => (
-                  <li key={l.to}>
-                    <Link to={l.to} className="text-sm text-charcoal-300 transition hover:text-white">
-                      {l.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {Object.entries(footerLinks).map(([title, links]) => {
+            const visible = links.filter((l) => !l.feature || isVisible(l.feature));
+            if (!visible.length) return null;
+            return (
+              <div key={title}>
+                <h3 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-gold-400">
+                  {title}
+                </h3>
+                <ul className="space-y-2.5">
+                  {visible.map((l) => (
+                    <li key={l.to}>
+                      <Link to={l.to} className="text-sm text-charcoal-300 transition hover:text-white">
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
 
         <div className="rail-divider my-10" />
