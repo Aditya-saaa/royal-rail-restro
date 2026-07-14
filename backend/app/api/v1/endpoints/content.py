@@ -1,9 +1,11 @@
 """Public content endpoints: reviews, gallery, blog, events, offers, contact, FAQ."""
 
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.api.deps import AdminUser, CurrentUser, DbSession, OptionalUser, StaffUser
 from app.models.content import Review
@@ -29,6 +31,20 @@ from app.services.content_service import ContentService
 from app.utils.helpers import paginate
 
 router = APIRouter(tags=["Content"])
+logger = logging.getLogger(__name__)
+
+
+async def _resilient(label: str, coro, default):
+    """Run a public read query; on a transient DB error, log it and return an
+    empty/default result instead of letting the request 500. Used only for
+    public GET endpoints — write endpoints and admin views still surface real
+    errors so they can be acted on.
+    """
+    try:
+        return await coro
+    except (DBAPIError, SQLAlchemyError) as exc:
+        logger.error("%s: query failed, returning empty result: %s", label, exc)
+        return default
 
 
 # ---- Reviews ----
@@ -41,12 +57,16 @@ async def list_reviews(
     page_size: int = Query(20, ge=1, le=100),
 ):
     service = ContentService(db)
-    items, total = await service.list_reviews(
-        approved_only=True,
-        featured_only=featured_only,
-        menu_item_id=menu_item_id,
-        page=page,
-        page_size=page_size,
+    items, total = await _resilient(
+        "list_reviews",
+        service.list_reviews(
+            approved_only=True,
+            featured_only=featured_only,
+            menu_item_id=menu_item_id,
+            page=page,
+            page_size=page_size,
+        ),
+        ([], 0),
     )
     return paginate(items, total, page, page_size)
 
@@ -143,7 +163,9 @@ async def list_gallery(
             detail="Gallery is currently unavailable.",
         )
     service = ContentService(db)
-    return await service.list_gallery(category=category, featured_only=featured_only)
+    return await _resilient(
+        "list_gallery", service.list_gallery(category=category, featured_only=featured_only), []
+    )
 
 
 @router.post("/gallery", response_model=GalleryImageOut, status_code=status.HTTP_201_CREATED)
@@ -208,7 +230,9 @@ async def list_blogs(
     if not await FeatureService(db).is_enabled("blog"):
         raise HTTPException(status_code=503, detail="Blog is currently unavailable.")
     service = ContentService(db)
-    items, total = await service.list_blogs(page=page, page_size=page_size)
+    items, total = await _resilient(
+        "list_blogs", service.list_blogs(page=page, page_size=page_size), ([], 0)
+    )
     return paginate(items, total, page, page_size)
 
 
@@ -279,7 +303,7 @@ async def list_events(db: DbSession, upcoming_only: bool = True):
     if not await FeatureService(db).is_enabled("events"):
         raise HTTPException(status_code=503, detail="Events are currently unavailable.")
     service = ContentService(db)
-    return await service.list_events(upcoming_only=upcoming_only)
+    return await _resilient("list_events", service.list_events(upcoming_only=upcoming_only), [])
 
 
 @router.get("/events/admin", response_model=List[EventOut])
@@ -337,7 +361,7 @@ async def list_offers(db: DbSession):
     if not await fs.is_enabled("offers") and not await fs.is_enabled("home_offers"):
         raise HTTPException(status_code=503, detail="Offers are currently unavailable.")
     service = ContentService(db)
-    return await service.list_offers()
+    return await _resilient("list_offers", service.list_offers(), [])
 
 
 @router.get("/offers/admin", response_model=List[OfferOut])
@@ -409,7 +433,7 @@ async def list_messages(
 @router.get("/faqs", response_model=List[FAQOut])
 async def list_faqs(db: DbSession, category: Optional[str] = None):
     service = ContentService(db)
-    return await service.list_faqs(category=category)
+    return await _resilient("list_faqs", service.list_faqs(category=category), [])
 
 
 @router.post("/faqs", response_model=FAQOut, status_code=status.HTTP_201_CREATED)

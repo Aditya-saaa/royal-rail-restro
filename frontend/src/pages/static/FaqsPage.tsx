@@ -1,10 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { contentApi } from '@/api/services';
 import { Seo } from '@/seo/Seo';
-import { PageLoader } from '@/components/ui/Spinner';
+import { QueryState } from '@/components/common/QueryState';
 
 export function FaqsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ['faqs'], queryFn: () => contentApi.faqs() });
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['faqs'],
+    queryFn: () => contentApi.faqs(),
+    staleTime: 60_000,
+    retry: 3,
+  });
   const jsonLd = data
     ? {
         '@context': 'https://schema.org',
@@ -21,7 +26,15 @@ export function FaqsPage() {
       <Seo title="FAQs" path="/faqs" jsonLd={jsonLd} />
       <div className="container-rrr max-w-3xl py-12">
         <h1 className="section-title">Frequently Asked Questions</h1>
-        {isLoading ? <PageLoader /> : (
+        <QueryState
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          isEmpty={!isLoading && !isError && !data?.length}
+          emptyTitle="No FAQs yet"
+          emptyDescription="Check back soon, or reach out to us directly with any questions."
+          onRetry={() => refetch()}
+        >
           <div className="mt-8 space-y-3">
             {data?.map((f) => (
               <details key={f.id} className="card group">
@@ -32,7 +45,7 @@ export function FaqsPage() {
               </details>
             ))}
           </div>
-        )}
+        </QueryState>
       </div>
     </>
   );

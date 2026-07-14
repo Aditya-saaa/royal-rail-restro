@@ -14,8 +14,15 @@ engine = create_async_engine(
     settings.database_url,
     echo=settings.app_debug,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    # Recycle connections before Render's Postgres (or the network path to it)
+    # can silently drop them for being idle. pool_pre_ping only validates a
+    # connection at checkout time, so a connection that goes stale while just
+    # sitting in the pool between requests won't be caught by pre_ping alone —
+    # this is the fix for asyncpg.exceptions.ConnectionDoesNotExistError
+    # showing up after periods of low traffic / after the free-tier DB naps.
+    pool_recycle=280,
+    pool_size=5,
+    max_overflow=10,
 )
 
 AsyncSessionLocal = async_sessionmaker(

@@ -1,9 +1,11 @@
 """Public restaurant info, search, sitemap helpers."""
 
+import logging
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Query
 from sqlalchemy import or_, select
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.api.deps import DbSession
 from app.core.config import settings
@@ -11,6 +13,7 @@ from app.models.menu import Category, MenuItem
 from app.models.content import BlogPost, FAQ
 
 router = APIRouter(tags=["Public"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/restaurant")
@@ -183,20 +186,44 @@ async def global_search(
 
 @router.get("/home")
 async def home_payload(db: DbSession):
-    """Aggregated home page data for fewer round-trips."""
+    """Aggregated home page data for fewer round-trips.
+
+    Each section is fetched independently and failures are isolated: if one
+    section's query hits a transient DB error (e.g. a stale pooled connection
+    getting recycled mid-request), the rest of the homepage still renders
+    instead of the whole endpoint 500ing.
+    """
     from app.services.content_service import ContentService
     from app.services.menu_service import MenuService
 
     menu = MenuService(db)
     content = ContentService(db)
 
-    featured = await menu.featured_items(8)
-    chef = await menu.chef_specials(6)
-    categories = await menu.list_categories(active_only=True, featured_only=False)
-    offers = await content.list_offers()
-    reviews, _ = await content.list_reviews(approved_only=True, featured_only=True, page=1, page_size=6)
-    gallery = await content.list_gallery(featured_only=True)
-    rail = await menu.rail_specials(4)
+    async def safe(label: str, coro, default):
+        try:
+            return await coro
+        except (DBAPIError, SQLAlchemyError) as exc:
+            logger.error("home_payload: %s section failed: %s", label, exc)
+            # The failed query may have left the session's transaction in a
+            # broken state — roll back so subsequent independent sections can
+            # still run on this same session.
+            await db.rollback()
+            return default
+
+    featured = await safe("featured_items", menu.featured_items(8), [])
+    chef = await safe("chef_specials", menu.chef_specials(6), [])
+    categories = await safe(
+        "categories", menu.list_categories(active_only=True, featured_only=False), []
+    )
+    offers = await safe("offers", content.list_offers(), [])
+    reviews_result = await safe(
+        "reviews",
+        content.list_reviews(approved_only=True, featured_only=True, page=1, page_size=6),
+        ([], 0),
+    )
+    reviews, _ = reviews_result
+    gallery = await safe("gallery", content.list_gallery(featured_only=True), [])
+    rail = await safe("rail_specials", menu.rail_specials(4), [])
 
     def item_brief(i: MenuItem) -> dict:
         return {
@@ -219,10 +246,12 @@ async def home_payload(db: DbSession):
     from app.models.settings import SiteSetting
     import json
 
-    settings_rows = (
-        await db.execute(select(SiteSetting).where(SiteSetting.is_public.is_(True)))
-    ).scalars().all()
-    cms = {r.key: r.value for r in settings_rows}
+    settings_rows = await safe(
+        "cms_settings",
+        db.execute(select(SiteSetting).where(SiteSetting.is_public.is_(True))),
+        None,
+    )
+    cms = {r.key: r.value for r in settings_rows.scalars().all()} if settings_rows else {}
     layout = None
     if cms.get("homepage_layout_json"):
         try:
