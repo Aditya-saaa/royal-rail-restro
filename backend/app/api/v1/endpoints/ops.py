@@ -138,6 +138,8 @@ async def order_timeline(order_id: str, db: DbSession, _: StaffUser):
 
 @router.get("/orders/{order_id}/invoice")
 async def order_invoice_html(order_id: str, db: DbSession, _: StaffUser):
+    import html as html_lib
+
     order = (
         await db.execute(
             select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
@@ -146,12 +148,24 @@ async def order_invoice_html(order_id: str, db: DbSession, _: StaffUser):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    def esc(value) -> str:
+        """HTML-escape any value that ends up inside the invoice markup.
+
+        Several of these fields (guest_name, guest_phone, item names via
+        special_notes) are free text supplied by whoever placed the order, so
+        they must never be interpolated into HTML unescaped — doing so lets a
+        customer's order data execute script in a staff member's browser the
+        moment they open the invoice.
+        """
+        return html_lib.escape(str(value)) if value is not None else ""
+
     rows = "".join(
-        f"<tr><td>{i.quantity}× {i.name}</td><td style='text-align:right'>₹{float(i.line_total):.2f}</td></tr>"
+        f"<tr><td>{esc(i.quantity)}× {esc(i.name)}</td>"
+        f"<td style='text-align:right'>₹{float(i.line_total):.2f}</td></tr>"
         for i in order.items
     )
-    html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><title>Invoice {order.invoice_number or order.order_number}</title>
+    invoice_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Invoice {esc(order.invoice_number or order.order_number)}</title>
 <style>
 body{{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;color:#1a1a1a}}
 h1{{color:#8B0000}} table{{width:100%;border-collapse:collapse;margin-top:16px}}
@@ -161,10 +175,10 @@ td,th{{padding:8px;border-bottom:1px solid #eee}} .muted{{color:#666;font-size:1
 <button class="no-print" onclick="window.print()">Print</button>
 <h1>Royal Rail Restro</h1>
 <p class="muted">1st Floor, Dev Raj Tower, Gewalbigha, Gaya, Bihar</p>
-<p><strong>Invoice:</strong> {order.invoice_number or '—'}<br/>
-<strong>Order:</strong> {order.order_number}<br/>
-<strong>Date:</strong> {order.created_at}<br/>
-<strong>Customer:</strong> {order.guest_name or 'Guest'} · {order.guest_phone or ''}</p>
+<p><strong>Invoice:</strong> {esc(order.invoice_number or '—')}<br/>
+<strong>Order:</strong> {esc(order.order_number)}<br/>
+<strong>Date:</strong> {esc(order.created_at)}<br/>
+<strong>Customer:</strong> {esc(order.guest_name or 'Guest')} · {esc(order.guest_phone or '')}</p>
 <table><thead><tr><th align="left">Item</th><th align="right">Amount</th></tr></thead>
 <tbody>{rows}</tbody></table>
 <p style="text-align:right;margin-top:16px">
@@ -174,10 +188,10 @@ GST: ₹{float(order.gst_amount):.2f}<br/>
 Delivery: ₹{float(order.delivery_fee):.2f}<br/>
 <strong style="font-size:18px;color:#8B0000">Total: ₹{float(order.total_amount):.2f}</strong>
 </p>
-<p class="muted">Payment: {order.payment_method or '—'} · {order.payment_status}<br/>
+<p class="muted">Payment: {esc(order.payment_method or '—')} · {esc(order.payment_status)}<br/>
 Thank you for dining with Royal Rail Restro.</p>
 </body></html>"""
-    return Response(content=html, media_type="text/html")
+    return Response(content=invoice_html, media_type="text/html")
 
 
 @router.get("/export/orders.csv")

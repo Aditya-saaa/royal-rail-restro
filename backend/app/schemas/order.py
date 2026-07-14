@@ -17,12 +17,12 @@ class OrderCreate(BaseModel):
     items: List[OrderItemCreate] = Field(min_length=1)
     order_type: str = Field(default="delivery", pattern="^(delivery|pickup|dine_in)$")
     payment_method: Optional[str] = "cod"
-    coupon_code: Optional[str] = None
-    delivery_address: Optional[str] = None
-    special_instructions: Optional[str] = None
-    guest_name: Optional[str] = None
+    coupon_code: Optional[str] = Field(default=None, max_length=40)
+    delivery_address: Optional[str] = Field(default=None, max_length=500)
+    special_instructions: Optional[str] = Field(default=None, max_length=500)
+    guest_name: Optional[str] = Field(default=None, max_length=150)
     guest_email: Optional[EmailStr] = None
-    guest_phone: Optional[str] = None
+    guest_phone: Optional[str] = Field(default=None, max_length=20)
 
 
 class OrderItemOut(BaseModel):

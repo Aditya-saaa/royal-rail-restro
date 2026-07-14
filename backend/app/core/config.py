@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Royal Rail Restro"
     app_env: str = "development"
-    app_debug: bool = True
+    app_debug: bool = False
     app_url: str = "http://localhost:5173"
     api_url: str = "http://localhost:8000"
     api_v1_prefix: str = "/api/v1"
@@ -68,8 +68,10 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
     )
-    # When true, reflect request Origin (safe for multi-preview Vercel deploys)
-    cors_allow_all: bool = True
+    # When true, reflect request Origin (safe for multi-preview Vercel deploys).
+    # Off by default — turn on explicitly only if you need to accept requests
+    # from arbitrary preview-deployment origins.
+    cors_allow_all: bool = False
 
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
@@ -127,6 +129,37 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
 
+    # Values shipped as the dev/demo defaults — never acceptable in production.
+    _DEFAULT_SECRET_KEY = "dev-only-change-in-production-min-32-chars!!"
+    _DEFAULT_ADMIN_PASSWORD = "Admin@RRR2026!"
+
+    def assert_safe_for_env(self) -> None:
+        """Guard against the most common "forgot to configure prod" mistakes.
+
+        Raises at startup if APP_ENV=production is set but the app is still
+        using default secrets — better to fail loudly at boot than to silently
+        run production traffic with a public/guessable JWT signing key or
+        admin password. Non-production environments only get a warning so
+        local/dev/staging setups keep working without extra config.
+        """
+        problems = []
+        if self.secret_key == self._DEFAULT_SECRET_KEY:
+            problems.append("SECRET_KEY is still the default dev value")
+        if self.admin_password == self._DEFAULT_ADMIN_PASSWORD:
+            problems.append("ADMIN_PASSWORD is still the default dev value")
+        if self.app_debug and self.is_production:
+            problems.append("APP_DEBUG=true while APP_ENV=production (leaks internals in error responses)")
+        if self.cors_allow_all and self.is_production:
+            problems.append("CORS_ALLOW_ALL=true while APP_ENV=production (reflects any origin)")
+
+        if not problems:
+            return
+
+        message = "Insecure configuration detected: " + "; ".join(problems)
+        if self.is_production:
+            raise RuntimeError(f"{message}. Refusing to start with APP_ENV=production.")
+        print(f"[config] WARNING: {message}. This is fine for local dev, but must be fixed before deploying.")
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -134,3 +167,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+settings.assert_safe_for_env()

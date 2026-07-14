@@ -7,21 +7,20 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
 from app import __version__
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.redis_client import close_redis, get_redis
 from app.db.base import Base
 from app.db.seed import seed_all
 from app.db.session import AsyncSessionLocal, engine
 from app.middleware.security import SecurityHeadersMiddleware
-
-limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_default])
 
 
 @asynccontextmanager
@@ -71,6 +70,10 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Without this middleware, `default_limits` is silently never enforced except
+# on routes that carry an explicit @limiter.limit(...) decorator — every other
+# route (login, signup, order creation, etc.) would have no rate limit at all.
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(SecurityHeadersMiddleware)
 

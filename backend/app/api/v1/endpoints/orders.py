@@ -2,10 +2,11 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
 from app.api.deps import AdminUser, CurrentUser, DbSession, OptionalUser, StaffUser
+from app.core.limiter import limiter
 from app.models.order import Coupon
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.order import (
@@ -74,7 +75,8 @@ async def my_orders(
 
 
 @router.get("/track/{order_number}", response_model=OrderOut)
-async def track_order(order_number: str, db: DbSession):
+@limiter.limit("20/hour")
+async def track_order(order_number: str, db: DbSession, request: Request):
     service = OrderService(db)
     order = await service.get_by_number(order_number)
     if not order:

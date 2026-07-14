@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.schemas.auth import (
     ChangePasswordRequest,
     EmailVerifyRequest,
@@ -47,7 +48,8 @@ def _set_auth_cookies(response: Response, tokens: TokenResponse) -> None:
 
 
 @router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def signup(data: SignupRequest, db: DbSession):
+@limiter.limit("10/hour")
+async def signup(data: SignupRequest, db: DbSession, request: Request):
     service = AuthService(db)
     try:
         user = await service.signup(data)
@@ -57,7 +59,8 @@ async def signup(data: SignupRequest, db: DbSession):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, response: Response, db: DbSession):
+@limiter.limit("10/minute")
+async def login(data: LoginRequest, response: Response, db: DbSession, request: Request):
     service = AuthService(db)
     try:
         user = await service.authenticate(data.email, data.password)
@@ -116,7 +119,8 @@ async def change_password(
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password(data: PasswordResetRequest, db: DbSession):
+@limiter.limit("5/hour")
+async def forgot_password(data: PasswordResetRequest, db: DbSession, request: Request):
     service = AuthService(db)
     token = await service.request_password_reset(data.email)
     # In production, send email. For now, return success always (anti-enumeration).

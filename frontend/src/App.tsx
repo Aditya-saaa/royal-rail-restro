@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { HelmetProvider } from 'react-helmet-async';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { DeveloperLayout } from '@/components/layout/DeveloperLayout';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
+import { RouteErrorBoundary, AppErrorBoundary } from '@/components/common/RouteErrorBoundary';
 import { BrandedBootScreen, HomeSkeleton, AdminPageSkeleton, PageLoader } from '@/components/ui/Spinner';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -46,7 +47,14 @@ function Bootstrap() {
 }
 
 function S({ children, fallback }: { children: React.ReactNode; fallback?: React.ReactNode }) {
-  return <Suspense fallback={fallback ?? <PageLoader />}>{children}</Suspense>;
+  const location = useLocation();
+  return (
+    // key={pathname} resets the boundary on navigation, so an error on one
+    // page doesn't permanently block a different page from trying again.
+    <RouteErrorBoundary key={location.pathname}>
+      <Suspense fallback={fallback ?? <PageLoader />}>{children}</Suspense>
+    </RouteErrorBoundary>
+  );
 }
 
 function LazyAdminCms({ name }: { name: keyof typeof import('@/pages/admin/AdminCmsPages') }) {
@@ -73,7 +81,32 @@ function LazyAdminOps({ name }: { name: keyof typeof import('@/pages/admin/Admin
   );
 }
 
-function LazyStatic({ name }: { name: keyof typeof import('@/pages/StaticPages') }) {
+// Each entry loads its own small chunk from pages/static/*, so a bug in one
+// page (or one failed chunk fetch) can't take down every other content page.
+const staticPageLoaders = {
+  AboutPage: () => import('@/pages/static/AboutPage').then((m) => ({ default: m.AboutPage })),
+  OurStoryPage: () => import('@/pages/static/AboutPage').then((m) => ({ default: m.OurStoryPage })),
+  RailThaliPage: () => import('@/pages/static/SpecialsPages').then((m) => ({ default: m.RailThaliPage })),
+  ChefSpecialsPage: () => import('@/pages/static/SpecialsPages').then((m) => ({ default: m.ChefSpecialsPage })),
+  GalleryPage: () => import('@/pages/static/GalleryPage').then((m) => ({ default: m.GalleryPage })),
+  ReviewsPage: () => import('@/pages/static/ReviewsPage').then((m) => ({ default: m.ReviewsPage })),
+  OffersPage: () => import('@/pages/static/OffersPage').then((m) => ({ default: m.OffersPage })),
+  EventsPage: () => import('@/pages/static/EventsPage').then((m) => ({ default: m.EventsPage })),
+  BlogPage: () => import('@/pages/static/BlogPages').then((m) => ({ default: m.BlogPage })),
+  BlogPostPage: () => import('@/pages/static/BlogPages').then((m) => ({ default: m.BlogPostPage })),
+  FaqsPage: () => import('@/pages/static/FaqsPage').then((m) => ({ default: m.FaqsPage })),
+  ContactPage: () => import('@/pages/static/ContactPage').then((m) => ({ default: m.ContactPage })),
+  PrivacyPage: () => import('@/pages/static/PolicyPages').then((m) => ({ default: m.PrivacyPage })),
+  TermsPage: () => import('@/pages/static/PolicyPages').then((m) => ({ default: m.TermsPage })),
+  RefundPage: () => import('@/pages/static/PolicyPages').then((m) => ({ default: m.RefundPage })),
+  SearchPage: () => import('@/pages/static/SearchPage').then((m) => ({ default: m.SearchPage })),
+  NotFoundPage: () => import('@/pages/static/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
+  OrderSuccessPage: () => import('@/pages/static/OrderStatusPages').then((m) => ({ default: m.OrderSuccessPage })),
+  TrackOrderPage: () => import('@/pages/static/OrderStatusPages').then((m) => ({ default: m.TrackOrderPage })),
+  AccountPage: () => import('@/pages/static/AccountPage').then((m) => ({ default: m.AccountPage })),
+} satisfies Record<string, () => Promise<{ default: React.ComponentType }>>;
+
+function LazyStatic({ name }: { name: keyof typeof staticPageLoaders }) {
   return (
     <S>
       <StaticLoader name={name} />
@@ -81,11 +114,8 @@ function LazyStatic({ name }: { name: keyof typeof import('@/pages/StaticPages')
   );
 }
 
-function StaticLoader({ name }: { name: keyof typeof import('@/pages/StaticPages') }) {
-  const Comp = lazy(async () => {
-    const mod = await import('@/pages/StaticPages');
-    return { default: mod[name] as React.ComponentType };
-  });
+function StaticLoader({ name }: { name: keyof typeof staticPageLoaders }) {
+  const Comp = lazy(staticPageLoaders[name]);
   return <Comp />;
 }
 
@@ -136,10 +166,11 @@ export default function App() {
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <Bootstrap />
-          <AppShell>
-            <Routes>
-              <Route element={<MainLayout />}>
+          <AppErrorBoundary>
+            <Bootstrap />
+            <AppShell>
+              <Routes>
+                <Route element={<MainLayout />}>
                 <Route
                   index
                   element={
@@ -240,6 +271,7 @@ export default function App() {
               <Route path="/special-menu" element={<Navigate to="/menu" replace />} />
             </Routes>
           </AppShell>
+          </AppErrorBoundary>
         </BrowserRouter>
       </QueryClientProvider>
     </HelmetProvider>

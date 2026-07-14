@@ -23,7 +23,11 @@ def slugify(text: str, max_length: int = 180) -> str:
 
 def generate_order_number() -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d")
-    suffix = "".join(secrets.choice(string.digits) for _ in range(6))
+    # 10 chars from a 34-symbol alphabet (~5*10^15 combinations) — this value
+    # doubles as the public lookup key for /orders/track/{order_number}, so it
+    # needs to resist brute-forcing on its own, not just rely on rate limiting.
+    alphabet = string.ascii_uppercase + string.digits
+    suffix = "".join(secrets.choice(alphabet) for _ in range(10))
     return f"RRR-{ts}-{suffix}"
 
 
